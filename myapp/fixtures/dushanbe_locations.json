@@ -1,0 +1,64 @@
+[
+  {
+    "model": "myapp.parkinglot",
+    "pk": 1001,
+    "fields": {
+      "name": "Zarafshan parking",
+      "address": "",
+      "latitude": "38.581810",
+      "longitude": "68.721580",
+      "is_active": false
+    }
+  },
+  {
+    "model": "myapp.parkinglot",
+    "pk": 1002,
+    "fields": {
+      "name": "Таввакуфгох",
+      "address": "",
+      "latitude": "38.577670",
+      "longitude": "68.734200",
+      "is_active": false
+    }
+  },
+  {
+    "model": "myapp.busstop",
+    "pk": 1001,
+    "fields": {
+      "name": "Парк имени Рудаки",
+      "address": "",
+      "latitude": "38.574800",
+      "longitude": "68.786680"
+    }
+  },
+  {
+    "model": "myapp.busstop",
+    "pk": 1002,
+    "fields": {
+      "name": "Мединститут",
+      "address": "",
+      "latitude": "38.579110",
+      "longitude": "68.754830"
+    }
+  },
+  {
+    "model": "myapp.busstop",
+    "pk": 1003,
+    "fields": {
+      "name": "Гостиница Авесто",
+      "address": "",
+      "latitude": "38.591010",
+      "longitude": "68.786820"
+    }
+  },
+  {
+    "model": "myapp.busstop",
+    "pk": 1004,
+    "fields": {
+      "name": "Фурудгох",
+      "address": "",
+      "latitude": "38.550440",
+      "longitude": "68.814980"
+    }
+  }
+]
