@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,16 +21,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-d=bp^ga2cf(q=a3mzmc7*tl8*j0o3r!15wjk!&enejn5)@(a^g'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'local-study-only-change-before-deployment')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,backend').split(',')
 
 
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -103,6 +105,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
+ASGI_APPLICATION = 'core.asgi.application'
 
 
 # Database
@@ -110,8 +113,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB', 'smart_city'),
+        'USER': os.environ.get('POSTGRES_USER', 'smart_city'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
+        'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 
@@ -151,6 +158,37 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Separate Redis databases for cache, broker, and channel layer.
+CACHES = {'default': {
+    'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+    'LOCATION': os.environ.get('REDIS_CACHE_URL', 'redis://127.0.0.1:6379/1'),
+    'TIMEOUT': 60,
+    'OPTIONS': {'socket_connect_timeout': 1, 'socket_timeout': 1},
+}}
+CHANNEL_LAYERS = {'default': {
+    'BACKEND': 'channels_redis.core.RedisChannelLayer',
+    'CONFIG': {'hosts': [{
+        'address': os.environ.get('REDIS_CHANNEL_URL', 'redis://127.0.0.1:6379/2'),
+        'socket_connect_timeout': 1, 'socket_timeout': 1,
+    }]},
+}}
+WEBSOCKET_ORIGINS = os.environ.get('WEBSOCKET_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080').split(',')
+REALTIME_ENABLED = True
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = 'UTC'
+CELERY_BEAT_SCHEDULE = {
+    'complete-expired-bookings': {'task': 'myapp.tasks.check_expired_bookings', 'schedule': 60.0},
+}
+if os.environ.get('DEMO_SIMULATION', '0') == '1':
+    CELERY_BEAT_SCHEDULE['move-demo-vehicle'] = {
+        'task': 'myapp.tasks.move_demo_vehicle', 'schedule': 10.0,
+    }
 
 
 # Email

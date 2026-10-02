@@ -1,101 +1,163 @@
-# Smart City · Dushanbe
+﻿# SMART CITY · Душанбе
 
-Небольшой учебный проект: Django REST API и React-интерфейс с настоящей интерактивной картой OpenStreetMap. Маршрут №88, три бронируемые парковки и движение микроавтобуса являются **DEMO DATA**, а не официальными городскими данными.
+Учебный Django DRF + React проект. Основные данные хранятся в PostgreSQL.
+Redis используется для cache (DB 1), Celery broker (DB 0), Channels (DB 2).
+Маршрут 88, три бронируемые парковки и DEMO-88-01 — демонстрационные данные.
 
-## Быстрый запуск
-
-В первом терминале, из корня проекта:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py loaddata dushanbe_locations
-.\.venv\Scripts\python.exe manage.py seed_demo_data
-.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
-```
-
-Если `.venv` ещё нет, сначала создайте его установленным Python: `python -m venv .venv`.
-
-Во втором терминале:
+## Запуск через Docker Compose
 
 ```powershell
+node scripts/setup-local-env.cjs
+docker compose up -d --build
+docker compose exec backend python manage.py seed_demo_data
 cd frontend
 npm.cmd install
 npm.cmd run dev
 ```
 
-Откройте `http://127.0.0.1:5173/` и зарегистрируйте пользователя. Vite пересылает запросы `/api/` и `/account/` в локальный Django. Для Django Admin отдельно создайте сотрудника через `manage.py createsuperuser`.
+Нужен работающий Docker Linux engine. На этом компьютере Docker не запускается:
+WSL не установлен. Compose подготовлен и проверен синтаксически; запуск контейнеров,
+реального Redis, Celery Worker и Beat в этой сессии не проверен.
+Celery для основного запуска предусмотрен в Linux-контейнере.
 
-Проверка:
+Приложение: http://localhost:5173 · Swagger: http://localhost:8000/swagger/
+Admin: http://localhost:8000/admin/ — создайте аккаунт командой
+`docker compose exec backend python manage.py createsuperuser`.
+
+`.env` создаётся с локальными случайными секретами и исключён из Git.
+Compose читает его автоматически. Все адреса и credentials задаются окружением;
+пример находится в `.env.example`. Не публикуйте dev-ключи и DEBUG=1.
+
+## Проверенный локальный PostgreSQL
+
+Пока Docker недоступен, выделенный PostgreSQL проекта работает на 127.0.0.1:55432.
+Данные находятся в `.runtime/postgres`, отдельно от установленного системного сервиса.
+В него импортированы 5 парковок, 15 мест, 12 остановок, Route 88, 8 RouteStop и Vehicle.
+Исходный `db.sqlite3` сохранён. CustomUser в исходной базе не было.
 
 ```powershell
-.\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py test
+$cityPython = 'C:\Program Files\PostgreSQL\18\pgAdmin 4\python\python.exe'
+# Если выделенный PostgreSQL остановлен:
+& 'C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe' -D .runtime/postgres -l .runtime/postgres.log -o '-h 127.0.0.1 -p 55432' start
+& $cityPython run_backend.py migrate
+& $cityPython run_backend.py runserver 127.0.0.1:8000 --noreload
+```
+
+`run_backend.py` читает локальный .env и использует библиотеки проекта,
+поскольку старый `.venv/Scripts/python.exe` ссылается на отсутствующий Python.
+На другом компьютере создайте обычное Python-окружение, установите requirements.txt
+и задайте переменные окружения перед `python manage.py ...`.
+Без Redis REST сохраняет данные, кэш читает из PostgreSQL и пишет предупреждение;
+real-time и broker в таком режиме недоступны. Это диагностический режим, не полный стек.
+
+## Перенос SQLite без JSON
+
+Для НОВОЙ ПУСТОЙ PostgreSQL-базы после migrate:
+
+```powershell
+python manage.py import_sqlite --source /path/to/db.sqlite3
+```
+
+Команда напрямую читает SQLite в режиме read-only и записывает существующие модели.
+ID и хеши паролей сохраняются, sequences PostgreSQL обновляются. При непустой целевой
+базе команда отказывается перезаписывать данные. Custom groups/permissions, sessions
+и JWT blacklist не копируются; после переноса войдите заново. JSON-файлов данных нет.
+В контейнер нужно отдельно передать SQLite-файл, он исключён из Docker image.
+
+## REST API
+
+| URL | Назначение |
+| --- | --- |
+| `/account/register/`, `/account/login/` | Регистрация и JWT |
+| `/account/token/refresh/`, `/account/logout/`, `/account/profile/` | Refresh, выход, профиль |
+| `/api/parkings/`, `/api/parking-spots/`, `/api/bookings/` | Парковки, места, брони |
+| `/api/parkings/<id>/availability/?start_time=...&end_time=...` | Доступность за интервал |
+| `/api/stops/`, `/api/routes/`, `/api/route-stops/`, `/api/vehicles/` | Транспорт и остановки |
+| `/api/routes/search/<start_id>/<end_id>/` | Прямой маршрут по порядку остановок |
+| `/api/parking-spots/?parking=ID`, `/api/vehicles/?route=ID` | Фильтрация |
+| `/api/incidents/`, `/api/service-requests/` | События и обращения |
+| `/api/assistant/`, `/api/camera/analyze/` | Настраиваемый AI gateway |
+
+Списки: GET, POST. Объекты /<id>/: GET, PUT, PATCH, DELETE.
+Authorization: Bearer ACCESS_TOKEN. Городские справочники меняет staff.
+Брони, события, обращения видит владелец или staff. Статус обращения меняет staff.
+Swagger документирует REST; WebSocket описан ниже.
+
+## WebSocket `/ws/city/`
+
+Vite пересылает `/ws/` в Daphne. После открытия клиент первым сообщением отправляет:
+
+```json
+{"type":"authenticate","access":"ACCESS_TOKEN"}
+```
+
+JWT не помещается в URL. До аутентификации пользователь не включён в группы и не
+получает данные. На аутентификацию даётся 5 секунд. Ошибка/истечение JWT → close 4401;
+попытка выполнять CRUD через сокет → 4403. Origin проверяется по WEBSOCKET_ORIGINS.
+В production используйте HTTPS/WSS. Клиент обновляет токен и переподключается.
+
+События имеют `kind` и `data`:
+`vehicle.updated`, `vehicle.deleted`, `incident.created/updated/deleted`,
+`request.created/updated/deleted`, `booking.updated/deleted`.
+`data` — сериализованная запись, при удалении только id.
+Транспорт доступен всем авторизованным. Личные события идут владельцу и staff,
+чужие события обычный пользователь не получает. Сокет только доставляет обновления;
+CRUD и начальная загрузка данных остаются в DRF. Обновления из Django Admin тоже
+отправляются благодаря post_save. Сигналы публикуют после успешного commit.
+
+## Redis, Celery и Beat
+
+Кэшируется только список маршрутов: `city:routes`, TTL 60 секунд.
+Изменение Route, RouteStop или BusStop удаляет кэш. Это сокращает одинаковые SQL-запросы.
+TTL — время жизни ключа: после истечения следующий запрос снова читает PostgreSQL.
+
+`check_expired_bookings` каждую минуту выбирает BOOKED с end_time < now и сохраняет
+COMPLETED. Повторный запуск безопасен; CANCELLED и будущие записи не меняются.
+`move_demo_vehicle` раз в 10 секунд переносит только DEMO-88-01 на следующую
+упорядоченную остановку. DEMO_SIMULATION=0 отключает периодическую симуляцию.
+Это не GPS и не официальный маршрут. REST booking validation остаётся в Serializer.
+
+Django/Celery Beat → Redis broker → Celery Worker → задача → PostgreSQL.
+После save: post_save → Redis channel layer → Channels consumer → WebSocket → React.
+Redis channel layer связывает разные процессы worker и ASGI; браузеры не подключаются
+к Redis напрямую. Дополнительные emergency calls и сложные notification-модели не добавлены.
+
+## Deployment: Nginx + ASGI
+
+```powershell
+cd frontend
+npm.cmd run build
+cd ..
+docker compose --profile deployment up -d --build
+```
+
+http://localhost:8080 обслуживает React build. Nginx пересылает API в Daphne,
+`/ws/` с Upgrade/Connection headers — в тот же ASGI-сервер; `/static/` и `/media/`
+читает из volumes. В development Nginx не нужен. Обычный WSGI Gunicorn не используется
+для WebSocket; выбран один Daphne для HTTP + WS. TLS и публичный hostname нужно
+настроить перед реальным deployment. Compose не является готовой production-конфигурацией.
+
+## Камера и AI
+
+Start/stop/flip, live preview, capture JPEG и отправка кадра реализованы.
+Без SMART_CITY_AI_URL и SMART_CITY_AI_KEY backend возвращает 503 AI is not configured.
+Адаптер ожидает POST gateway с system/task/message либо system/task/image и ответ
+`{"answer":"..."}`. Конкретная модель не подключена. Инструкция: myapp/ai_prompt.txt.
+Внешняя модель не получает ключи или JWT. Встроенный справочник явно подписан.
+Камера и UI визуально не проверены: браузерный инструмент не обнаружил браузеров.
+
+## Проверки и защита
+
+```powershell
+$env:POSTGRES_TESTS='1'
+& $cityPython run_backend.py test --settings=core.test_settings
+& $cityPython run_backend.py check
+& $cityPython run_backend.py makemigrations --check
 cd frontend
 npm.cmd run build
 ```
 
-## Что действительно работает
-
-Регистрация, вход, JWT access/refresh, выход, профиль; CRUD для девяти существующих моделей; разграничение прав; бронирование с проверкой времени; поиск прямого маршрута; Django Admin; Swagger. Команда `seed_demo_data` создаёт Route 88, 8 остановок, один Vehicle, 3 парковки и 15 мест. Она использует `get_or_create`, поэтому повторный запуск не добавляет дубликаты.
-
-React показывает Dashboard, карту, парковки, бронирования, маршрут, события, обращения, камеру, помощника и профиль. Есть светлая и тёмная темы, мобильная компоновка, состояния загрузки и ошибок. Данные загружаются из Django API, а карта — из OpenStreetMap. Для картографических тайлов нужен интернет.
-
-## API
-
-| Адрес | Назначение |
-| --- | --- |
-| `/account/register/`, `/account/login/` | Регистрация и выдача JWT |
-| `/account/token/refresh/`, `/account/logout/`, `/account/profile/` | Обновление токена, выход, профиль |
-| `/api/parkings/`, `/api/parking-spots/`, `/api/bookings/` | Парковки, места, брони |
-| `/api/parkings/<id>/availability/?start_time=...&end_time=...` | Свободные места за выбранный интервал |
-| `/api/stops/`, `/api/routes/`, `/api/route-stops/`, `/api/vehicles/` | Транспорт и остановки |
-| `/api/routes/search/?start_stop=ID&end_stop=ID` | Прямой маршрут в правильном направлении |
-| `/api/route-paths/88/` | DEMO-линия маршрута 88 |
-| `/api/incidents/`, `/api/service-requests/` | Дорожные события и обращения |
-| `/swagger/`, `/admin/` | Документация и Django Admin |
-
-Списки поддерживают `GET`, `POST`; запись по `/<id>/` — `GET`, `PUT`, `PATCH`, `DELETE`. Кроме регистрации и входа нужен заголовок `Authorization: Bearer <access>`. Городские данные читает авторизованный пользователь, изменяет сотрудник. Личные записи пользователь видит и меняет только свои. Поля `user` и `created_by` задаёт backend.
-
-## Как устроен код
-
-| Файл | Что делает | Что объяснить учителю |
-| --- | --- | --- |
-| `myapp/models.py` | Таблицы и связи | `ForeignKey` связывает объекты; `RouteStop.order` хранит последовательность; `CASCADE` удаляет зависимое, `SET_NULL` оставляет Vehicle без маршрута. |
-| `myapp/serializer.py` | JSON и проверка данных | `ParkingBookingSerializer.validate()` проверяет время, активность места и пересечение броней. |
-| `myapp/permissions.py` | Разрешает или запрещает действие | JWTAuthentication определяет `request.user`; permission проверяет его права. |
-| `myapp/views.py` | Generic Views и небольшие специальные GET API | `get_queryset()` скрывает чужие записи; `perform_create()` назначает владельца перед сохранением. |
-| `myapp/urls.py`, `accounts/urls.py` | Связь URL с views | URL — адрес конкретного действия API. |
-| `frontend/src/api.js` | JWT, обновление токена, вызовы API | Frontend не передаёт владельца, а добавляет access token в заголовок. |
-| `frontend/src/CityMap.jsx` | Leaflet-карта, маркеры и линия | OpenStreetMap рисует улицы, Django отдаёт координаты объектов. |
-| `frontend/src/Pages.jsx` | Страницы и формы | Бронь, событие и обращение отправляются через API. |
-
-В `frontend/src/CityMap.jsx` DEMO Vehicle перемещается по точкам `route_paths.json` только для демонстрации интерфейса. Это **не live GPS**. Линия также DEMO и не заявлена как точная дорожная геометрия.
-
-## Геоданные и DEMO DATA
-
-`myapp/fixtures/dushanbe_locations.json` содержит 4 нанесённые на карту остановки и 2 парковки с опубликованными координатами. Адреса парковок оставлены пустыми, а `is_active=false`: возможность реального бронирования не подтверждена. DEMO-парковки и места создаёт отдельная команда. Источники координат:
-
-| Объект | OSM ID | Источник |
-| --- | --- | --- |
-| Zarafshan parking | way 486347100 | [Mapcarta / OSM](https://mapcarta.com/W486347100) |
-| Таввакуфгох | way 377957311 | [Mapcarta / OSM](https://mapcarta.com/W377957311) |
-| Парк имени Рудаки | node 300671943 | [Mapcarta / OSM](https://mapcarta.com/N300671943) |
-| Мединститут | node 4865522022 | [Mapcarta / OSM](https://mapcarta.com/N4865522022) |
-| Гостиница Авесто | node 6549124480 | [Mapcarta / OSM](https://mapcarta.com/N6549124480) |
-| Фурудгох | node 5481809824 | [Mapcarta / OSM](https://mapcarta.com/N5481809824) |
-
-[Министерство транспорта Таджикистана](https://mintrans.tj/en/surface-transport-city-routes-details/1) публикует номера и описания маршрутов, но не полный набор координат и точную линию. Поэтому Route 88 в проекте явно обозначен как DEMO. На карте видна атрибуция © OpenStreetMap contributors. Публичные тайлы используются только при обычном просмотре карты, без массовой загрузки.
-
-## Камера и помощник
-
-Камера использует `navigator.mediaDevices.getUserMedia()` для live preview и останавливает видеотреки при выключении. Видеопоток не сохраняется. Кнопка анализа честно сообщает `AI Analysis: Not connected`: модель обнаружения опасностей не подключена, кадр не отправляется. Для камеры на телефоне при открытии с другого устройства потребуется HTTPS; `localhost` на ноутбуке работает как защищённый контекст.
-
-Помощник сейчас работает как встроенный справочник по функциям и устройству проекта. Он не обращается к внешней AI-модели и не выдаёт DEMO за официальные данные.
-
-## Ограничения перед реальным городским запуском
-
-- DEMO-маршрут, координаты DEMO-остановок, парковок и движение Vehicle нужно заменить проверенными городскими данными и GPS-интеграцией.
-- Для настоящего одновременного бронирования нужна защита от гонок на уровне транзакций и подходящей базы данных. Учебная SQLite проверяет пересечения в обычных последовательных запросах.
-- Камерный AI, автоматическая оценка опасности, экстренные вызовы и онлайн-оплата не подключены.
-- Текущие `SECRET_KEY`, `DEBUG` и `ALLOWED_HOSTS` предназначены для локальной разработки. Перед публикацией их нужно настроить безопасно.
+22 теста прошли на PostgreSQL. В тестах cache и channel layer изолированы в памяти;
+Celery tasks вызываются напрямую. Это НЕ подтверждение работы Redis broker/Beat.
+Для полного стека предусмотрен `scripts/integration_realtime.py`.
+Отчёт: [VERIFICATION.md](VERIFICATION.md). Объяснения: [DEFENSE.md](DEFENSE.md).

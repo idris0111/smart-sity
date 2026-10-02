@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const python = resolve(root, '.venv/Scripts/python.exe')
+const python = process.env.SMART_CITY_PYTHON || resolve(root, '.venv/Scripts/python.exe')
+const launcher = process.env.SMART_CITY_PYTHON ? 'run_backend.py' : 'manage.py'
 const base = 'http://127.0.0.1:5173'
 const username = `smoke_${randomUUID().slice(0, 8)}`
 const password = `Smoke-${randomUUID()}!`
@@ -35,9 +36,14 @@ try {
   expect(parkings, 200, 'parkings through Vite proxy')
   const parking = parkings.data.find(item => item.name === 'DEMO Parking West')
   if (!parking) throw new Error('DEMO parking is missing. Run seed_demo_data.')
-  const route = await request('/api/route-paths/88/', 'GET', null, token)
-  expect(route, 200, 'DEMO route path')
-  if (!route.data.is_demo) throw new Error('Route path lacks DEMO label')
+  const routes = await request('/api/routes/', 'GET', null, token)
+  expect(routes, 200, 'routes')
+  const route = routes.data.find(item => item.number === '88' && item.name.startsWith('DEMO'))
+  if (route?.route_stops.length !== 8) throw new Error('DEMO route needs 8 ordered stops')
+  const stops = route.route_stops
+  expect(await request(`/api/routes/search/${stops[0].stop}/${stops[7].stop}/`, 'GET', null, token), 200, 'route search')
+  const reverse = await request(`/api/routes/search/${stops[7].stop}/${stops[0].stop}/`, 'GET', null, token)
+  if (reverse.data.some(item => item.id === route.id)) throw new Error('Reverse route search is incorrect')
 
   const start = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
   const end = new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString()
@@ -59,6 +65,6 @@ try {
   console.log('Frontend proxy and backend API smoke test passed.')
 } finally {
   const code = `from django.contrib.auth import get_user_model; get_user_model().objects.filter(username='${username}').delete()`
-  const cleanup = spawnSync(python, ['manage.py', 'shell', '-c', code], { cwd: root, encoding: 'utf8' })
+  const cleanup = spawnSync(python, [launcher, 'shell', '-c', code], { cwd: root, encoding: 'utf8' })
   if (cleanup.status !== 0) console.error('Temporary account cleanup failed:', cleanup.stderr)
 }

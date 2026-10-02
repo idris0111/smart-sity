@@ -71,7 +71,7 @@ export default function CityMap({ data, filters, selected, onSelect, routePath, 
             <strong>{title}</strong><br />
             <span>{item.name?.startsWith('DEMO') || item.plate_number?.startsWith('DEMO') ? 'DEMO DATA · ' : ''}{kind === 'parking' ? 'Парковка' : kind === 'stop' ? 'Остановка' : kind === 'vehicle' ? 'Транспорт' : kind === 'incident' ? 'Дорожное событие' : 'Обращение'}</span><br />
             {item.address && <span>{item.address}<br /></span>}
-            {kind === 'parking' && <span>{item.is_active ? '???????' : '?????????'}</span>}
+            {kind === 'parking' && <span>{item.is_active ? 'Активна' : 'Неактивна'}</span>}
             {kind === 'vehicle' && <span>{item.vehicle_type} ? Route {data.routes.find(route => route.id === item.route)?.number || '?'}</span>}
             {(kind === 'incident' || kind === 'request') && <span>{item.incident_type || item.request_type} ? {item.status}</span>}
           </Popup>

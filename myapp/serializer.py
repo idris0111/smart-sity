@@ -15,6 +15,13 @@ class AvailabilityQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class AvailabilitySpotSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    number = serializers.CharField()
+    spot_type = serializers.CharField()
+    available = serializers.BooleanField()
+
+
 class AssistantInputSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=4000)
 

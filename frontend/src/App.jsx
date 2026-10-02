@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { connectCity } from './realtime.js'
 import {
   Bot, Camera, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Map,
   Menu, Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Route, Search,
@@ -78,7 +80,10 @@ function AuthScreen({ onDone }) {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(Boolean(session.access))
-  const [page, setPage] = useState(location.hash.slice(1) || 'dashboard')
+  const routerLocation = useLocation()
+  const routerNavigate = useNavigate()
+  const requestedPage = routerLocation.pathname.slice(1)
+  const page = NAV.some(([key]) => key === requestedPage) ? requestedPage : 'dashboard'
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [theme, setTheme] = useState(localStorage.getItem('smart-city-theme') || 'light')
@@ -87,8 +92,10 @@ export default function App() {
   const [profile, setProfile] = useState(null)
   const [availableCount, setAvailableCount] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  const [realtimeStatus, setRealtimeStatus] = useState('disconnected')
   const [selected, setSelected] = useState(null)
   const [filters, setFilters] = useState({ parkings: true, stops: true, vehicles: true, routes: true, incidents: true, requests: true })
   const [search, setSearch] = useState('')
@@ -107,6 +114,7 @@ export default function App() {
   const loadData = useCallback(async () => {
     if (!session.access) return
     setLoading(true)
+    setAvailableCount(null)
     setError('')
     try {
       const [parkings, spots, bookings, stops, routes, vehicles, incidents, requests, person] = await Promise.all([
@@ -121,9 +129,10 @@ export default function App() {
       const now = new Date()
       const later = new Date(now.getTime() + 60 * 60 * 1000)
       const available = await Promise.all(parkings.filter(item => item.is_active).map(item =>
-        api(`/api/parkings/${item.id}/availability/?start_time=${encodeURIComponent(now.toISOString())}&end_time=${encodeURIComponent(later.toISOString())}`).catch(() => []),
+        api(`/api/parkings/${item.id}/availability/?start_time=${encodeURIComponent(now.toISOString())}&end_time=${encodeURIComponent(later.toISOString())}`),
       ))
       setAvailableCount(available.flat().filter(spot => spot.available).length)
+      setLastUpdated(new Date())
     } catch (issue) {
       if (!session.access) setAuthenticated(false)
       setError(issue.message)
@@ -135,14 +144,18 @@ export default function App() {
   useEffect(() => { if (authenticated) loadData() }, [authenticated, loadData])
 
   useEffect(() => {
-    const change = () => setPage(NAV.some(([key]) => key === location.hash.slice(1)) ? location.hash.slice(1) : 'dashboard')
-    window.addEventListener('hashchange', change)
-    return () => window.removeEventListener('hashchange', change)
-  }, [])
-  useEffect(() => {
     if (!authenticated) return undefined
-    const timer = setInterval(loadData, 30000)
-    return () => clearInterval(timer)
+    return connectCity(event => {
+      const [kind, action] = event.kind.split('.')
+      const key = { vehicle: 'vehicles', incident: 'incidents', request: 'requests', booking: 'bookings' }[kind]
+      if (!key) return
+      setData(current => {
+        const remaining = current[key].filter(item => item.id !== event.data.id)
+        return { ...current, [key]: action === 'deleted' ? remaining : [...remaining, event.data] }
+      })
+      if (kind !== 'vehicle') setToast(`${event.kind}: ${event.data.status || event.data.title || event.data.id}`)
+      if (kind === 'booking') loadData()
+    }, setRealtimeStatus)
   }, [authenticated, loadData])
 
   const stats = useMemo(() => ({
@@ -162,7 +175,7 @@ export default function App() {
     setProfile(null)
   }
 
-  function navigate(next) { location.hash = next; setPage(next); setMobileOpen(false) }
+  function navigate(next) { routerNavigate('/' + next); setMobileOpen(false) }
 
   function runSearch(event) {
     event.preventDefault()
@@ -173,13 +186,13 @@ export default function App() {
       ...data.stops.map(item => ({ ...item, kind: 'stop', label: item.name })),
       ...data.vehicles.map(item => ({ ...item, kind: 'vehicle', label: item.plate_number })),
     ].find(item => item.label.toLocaleLowerCase().includes(query))
-    if (found) { setSelected(found); setPage('map'); setSearch('') }
+    if (found) { setSelected(found); navigate('map'); setSearch('') }
     else setToast('Объект не найден')
   }
 
   if (!authenticated) return <AuthScreen onDone={() => setAuthenticated(true)} />
 
-  const common = { data, routePath, filters, setFilters, selected, setSelected, navigate, reload: loadData, notify: setToast, stats, loading }
+  const common = { data, routePath, filters, setFilters, selected, setSelected, navigate, reload: loadData, notify: setToast, stats, loading, profile, lastUpdated }
   const pageContent = {
     dashboard: <DashboardPage {...common} />,
     map: <MapPage {...common} />,
@@ -205,7 +218,7 @@ export default function App() {
         <div className="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
         <nav className="main-nav">{NAV.map(([key, label, Icon]) => <button key={key} className={`nav-item ${page === key ? 'active' : ''}`} onClick={() => navigate(key)} title={label}><Icon size={20} strokeWidth={1.8} /><span className="nav-label">{label}</span>{page === key && <span className="nav-active-indicator" />}</button>)}</nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-live"><span className="status-dot" /><div><strong>Система активна</strong><small>Данные Django API</small></div></div>
+          <div className="sidebar-live"><span className="status-dot" /><div><strong>{realtimeStatus === 'connected' ? 'Real-time подключён' : 'Real-time отключён'}</strong><small>Django API · WebSocket</small></div></div>
           <button className="nav-item" onClick={signOut} title="Выйти"><LogOut size={20} /><span className="nav-label">Выйти</span></button>
         </div>
       </aside>

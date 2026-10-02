@@ -7,9 +7,12 @@ from rest_framework.views import APIView
 from .models import (BusStop, ParkingBooking, ParkingLot, ParkingSpot, Route,RouteStop, ServiceRequest, TrafficIncident, Vehicle)
 from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
 from .serializer import (BusStopSerializer, ParkingBookingSerializer,ParkingLotSerializer, ParkingSpotSerializer, RouteSerializer,RouteStopSerializer, ServiceRequestSerializer,TrafficIncidentSerializer, VehicleSerializer)
-from .serializer import AvailabilityQuerySerializer
+from .serializer import AvailabilityQuerySerializer, AvailabilitySpotSerializer
 from .serializer import AssistantInputSerializer, CameraInputSerializer
 from .ai import ask_provider
+from django.core.cache import cache
+from redis.exceptions import RedisError
+import logging
 
 
 class AssistantView(GenericAPIView):
@@ -30,8 +33,7 @@ class CameraAnalysisView(GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         result = ask_provider({'task': 'camera', **serializer.validated_data})
-        return Response({'answer': result['answer'], 'confirmed': False,
-                         'recommendation': 'Возможная опасная ситуация. Рекомендуется проверить.'})
+        return Response({'answer': result['answer'], 'confirmed': False,'recommendation': 'Возможная опасная ситуация. Рекомендуется проверить.'})
 
 
 class ParkingLotListCreateView(ListCreateAPIView):
@@ -57,7 +59,7 @@ class ParkingSpotListCreateView(ListCreateAPIView):
         if value is not None:
             if not value.isdecimal():
                 from rest_framework.exceptions import ValidationError
-                raise ValidationError({'parking': '??????? ???????? ID'})
+                raise ValidationError({'parking': 'Укажите числовой ID'})
             queryset = queryset.filter(parking_id=value)
         return queryset
 
@@ -71,7 +73,8 @@ class ParkingSpotDetailView(RetrieveUpdateDestroyAPIView):
 class ParkingAvailabilityView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(query_serializer=AvailabilityQuerySerializer)
+    @swagger_auto_schema(query_serializer=AvailabilityQuerySerializer,
+                         responses={200: AvailabilitySpotSerializer(many=True)})
     def get(self, request, pk):
         parking = ParkingLot.objects.filter(pk=pk).first()
         if parking is None:
@@ -140,6 +143,20 @@ class RouteListCreateView(ListCreateAPIView):
     serializer_class = RouteSerializer
     permission_classes = [IsAdminOrReadOnly]
 
+    def list(self, request, *args, **kwargs):
+        try:
+            data = cache.get('city:routes')
+        except RedisError:
+            data = None
+            logging.getLogger(__name__).warning('Redis cache unavailable; reading routes from database')
+        if data is None:
+            data = self.get_serializer(self.get_queryset(), many=True).data
+            try:
+                cache.set('city:routes', data, timeout=60)
+            except RedisError:
+                logging.getLogger(__name__).warning('Redis cache unavailable; routes were not cached')
+        return Response(data)
+
 
 class RouteDetailView(RetrieveUpdateDestroyAPIView):
     queryset = Route.objects.prefetch_related('route_stops__stop').all()
@@ -190,7 +207,7 @@ class VehicleListCreateView(ListCreateAPIView):
         if value is not None:
             if not value.isdecimal():
                 from rest_framework.exceptions import ValidationError
-                raise ValidationError({'route': '??????? ???????? ID'})
+                raise ValidationError({'route': 'Укажите числовой ID'})
             queryset = queryset.filter(route_id=value)
         return queryset
 

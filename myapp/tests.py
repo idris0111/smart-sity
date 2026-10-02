@@ -11,6 +11,8 @@ from .models import BusStop, ParkingLot, ParkingSpot, Route, RouteStop, Vehicle
 
 class SmartCityAPITests(APITestCase):
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username='alice', password='test-pass-123')
         self.other = user_model.objects.create_user(username='bob', password='test-pass-123')
@@ -182,3 +184,98 @@ class SmartCityAPITests(APITestCase):
 
     def test_swagger(self):
         self.assertEqual(self.client.get('/swagger/').status_code, 200)
+        schema = self.client.get('/swagger/?format=openapi').json()
+        paths = schema['paths']
+        self.assertIn('/api/routes/search/{start_id}/{end_id}/', paths)
+        self.assertIn('Bearer', schema['securityDefinitions'])
+        self.assertTrue({'get', 'post'}.issubset(paths['/api/parkings/']))
+        self.assertTrue({'get', 'put', 'patch', 'delete'}.issubset(paths['/api/parkings/{id}/']))
+
+    def test_filters_and_missing_stop(self):
+        self.authenticate(self.user)
+        other_lot = ParkingLot.objects.create(name='Other', address='Other', latitude=38, longitude=68)
+        ParkingSpot.objects.create(parking=other_lot, number='B1')
+        spots = self.client.get(f'/api/parking-spots/?parking={self.lot.pk}')
+        self.assertEqual([item['id'] for item in spots.data], [self.spot.pk])
+        self.assertEqual(self.client.get('/api/parking-spots/?parking=invalid').status_code, 400)
+        route = Route.objects.create(number='42', name='Test')
+        vehicle = Vehicle.objects.create(route=route, plate_number='FILTER-42')
+        Vehicle.objects.create(plate_number='NO-ROUTE')
+        self.assertEqual([item['id'] for item in self.client.get(f'/api/vehicles/?route={route.pk}').data], [vehicle.pk])
+        self.assertEqual(self.client.get('/api/routes/search/99999/99998/').status_code, 404)
+
+    def test_route_stop_and_owned_crud(self):
+        self.authenticate(self.admin)
+        route = Route.objects.create(number='CRUD', name='CRUD')
+        stop = BusStop.objects.create(name='CRUD', latitude=38, longitude=68)
+        payload = {'route': route.pk, 'stop': stop.pk, 'order': 1}
+        result = self.client.post('/api/route-stops/', payload)
+        self.assertEqual(result.status_code, 201)
+        url = f"/api/route-stops/{result.data['id']}/"
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.put(url, payload).status_code, 200)
+        self.assertEqual(self.client.patch(url, {'order': 2}).status_code, 200)
+        self.assertEqual(self.client.delete(url).status_code, 204)
+        for resource, payload in [
+            ('incidents', {'title': 'CRUD', 'description': 'Test', 'incident_type': 'OTHER', 'latitude': '38.560000', 'longitude': '68.780000'}),
+            ('service-requests', {'description': 'Test', 'request_type': 'ROAD', 'latitude': '38.560000', 'longitude': '68.780000'}),
+            ('bookings', self.booking_data()),
+        ]:
+            self.authenticate(self.user)
+            result = self.client.post(f'/api/{resource}/', payload)
+            self.assertEqual(result.status_code, 201)
+            url = f"/api/{resource}/{result.data['id']}/"
+            self.assertEqual(self.client.put(url, payload).status_code, 200)
+            self.authenticate(self.other)
+            self.assertEqual(self.client.get(url).status_code, 404)
+            self.assertEqual(self.client.delete(url).status_code, 404)
+            self.authenticate(self.admin)
+            self.assertEqual(self.client.get(url).status_code, 200)
+            self.authenticate(self.user)
+            self.assertEqual(self.client.delete(url).status_code, 204)
+
+    def test_all_city_crud_methods(self):
+        resources = [
+            ('parkings', {'name': 'CRUD', 'address': 'Test', 'latitude': '38.560000', 'longitude': '68.780000'}),
+            ('parking-spots', {'parking': self.lot.pk, 'number': 'CRUD'}),
+            ('stops', {'name': 'CRUD', 'latitude': '38.560000', 'longitude': '68.780000'}),
+            ('routes', {'number': 'CRUD', 'name': 'CRUD'}),
+            ('vehicles', {'plate_number': 'CRUD'}),
+        ]
+        for resource, payload in resources:
+            with self.subTest(resource=resource):
+                self.client.credentials()
+                self.assertEqual(self.client.get(f'/api/{resource}/').status_code, 401)
+                self.authenticate(self.user)
+                self.assertEqual(self.client.get(f'/api/{resource}/').status_code, 200)
+                self.assertEqual(self.client.post(f'/api/{resource}/', payload).status_code, 403)
+                self.authenticate(self.admin)
+                result = self.client.post(f'/api/{resource}/', payload)
+                self.assertEqual(result.status_code, 201)
+                url = f"/api/{resource}/{result.data['id']}/"
+                self.assertEqual(self.client.get(url).status_code, 200)
+                self.assertEqual(self.client.put(url, payload).status_code, 200)
+                self.assertEqual(self.client.patch(url, payload).status_code, 200)
+                self.assertEqual(self.client.delete(url).status_code, 204)
+
+    def test_booking_patch_excludes_itself_and_inactive_lot(self):
+        self.authenticate(self.user)
+        result = self.client.post('/api/bookings/', self.booking_data())
+        url = f"/api/bookings/{result.data['id']}/"
+        self.assertEqual(self.client.patch(url, self.booking_data()).status_code, 200)
+        self.assertEqual(self.client.delete(url).status_code, 204)
+        self.lot.is_active = False
+        self.lot.save()
+        self.assertEqual(self.client.post('/api/bookings/', self.booking_data()).status_code, 400)
+
+    def test_ai_not_configured_and_input_validation(self):
+        from unittest.mock import patch
+        self.assertEqual(self.client.post('/api/assistant/', {'message': 'Hello'}).status_code, 401)
+        self.authenticate(self.user)
+        with patch.dict('os.environ', {}, clear=True):
+            result = self.client.post('/api/assistant/', {'message': 'Hello'})
+            self.assertEqual(result.status_code, 503)
+            self.assertEqual(str(result.data['detail']), 'AI is not configured.')
+            self.assertEqual(self.client.post('/api/camera/analyze/', {'image': 'data:image/jpeg;base64,/9j/'}).status_code, 503)
+        self.assertEqual(self.client.post('/api/assistant/', {}).status_code, 400)
+        self.assertEqual(self.client.post('/api/camera/analyze/', {'image': 'invalid'}).status_code, 400)

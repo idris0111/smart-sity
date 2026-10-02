@@ -44,7 +44,7 @@ export async function register(username, password) {
   }))
 }
 
-async function refreshAccess() {
+async function requestFreshAccess() {
   if (!session.refresh) throw new Error('Войдите снова')
   const response = await fetch(BASE_URL + '/account/token/refresh/', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -52,6 +52,11 @@ async function refreshAccess() {
   })
   const tokens = await read(response)
   session.save({ access: tokens.access, refresh: tokens.refresh || session.refresh })
+}
+
+export function refreshAccess() {
+  if (!refreshPending) refreshPending = requestFreshAccess().finally(() => { refreshPending = null })
+  return refreshPending
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
@@ -66,13 +71,13 @@ export async function api(path, { method = 'GET', body } = {}) {
   let response = await fetch(BASE_URL + path, options())
   if (response.status === 401 && session.refresh) {
     try {
-      if (!refreshPending) refreshPending = refreshAccess().finally(() => { refreshPending = null })
-      await refreshPending
+      await refreshAccess()
       response = await fetch(BASE_URL + path, options())
     } catch (error) {
       session.clear()
       throw error
     }
   }
+  if (response.status === 401) session.clear()
   return read(response)
 }
