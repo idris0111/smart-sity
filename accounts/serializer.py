@@ -11,10 +11,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         extra_kwargs = {'password': {'write_only': True}}
  
     def create(self, validated_data):
-        return User.objects.create_user(
-            username=validated_data['username'],
-            password=validated_data['password'],
-        )
+        user = User(username=validated_data['username'])
+        user.set_password(validated_data['password'])
+        user.save()
+        return user
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -22,3 +22,12 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'first_name', 'last_name', 'email')
         read_only_fields = ('id',)
+
+
+class PromoteUserSerializer(serializers.Serializer):
+    username = serializers.CharField(help_text='Username of the user to make superadmin')
+
+    def validate_username(self, value):
+        if not User.objects.filter(username=value).exists():
+            raise serializers.ValidationError('User does not exist')
+        return value

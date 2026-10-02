@@ -1,14 +1,37 @@
-import json
-
-from django.conf import settings
 from django.http import Http404
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework.generics import GenericAPIView, ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import (BusStop, ParkingBooking, ParkingLot, ParkingSpot, Route,RouteStop, ServiceRequest, TrafficIncident, Vehicle)
 from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
 from .serializer import (BusStopSerializer, ParkingBookingSerializer,ParkingLotSerializer, ParkingSpotSerializer, RouteSerializer,RouteStopSerializer, ServiceRequestSerializer,TrafficIncidentSerializer, VehicleSerializer)
+from .serializer import AvailabilityQuerySerializer
+from .serializer import AssistantInputSerializer, CameraInputSerializer
+from .ai import ask_provider
+
+
+class AssistantView(GenericAPIView):
+    serializer_class = AssistantInputSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(ask_provider({'task': 'assistant', **serializer.validated_data}))
+
+
+class CameraAnalysisView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = CameraInputSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = ask_provider({'task': 'camera', **serializer.validated_data})
+        return Response({'answer': result['answer'], 'confirmed': False,
+                         'recommendation': 'Возможная опасная ситуация. Рекомендуется проверить.'})
 
 
 class ParkingLotListCreateView(ListCreateAPIView):
@@ -28,11 +51,47 @@ class ParkingSpotListCreateView(ListCreateAPIView):
     serializer_class = ParkingSpotSerializer
     permission_classes = [IsAdminOrReadOnly]
 
+    def get_queryset(self):
+        queryset = ParkingSpot.objects.all()
+        value = self.request.query_params.get('parking')
+        if value is not None:
+            if not value.isdecimal():
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({'parking': '??????? ???????? ID'})
+            queryset = queryset.filter(parking_id=value)
+        return queryset
+
 
 class ParkingSpotDetailView(RetrieveUpdateDestroyAPIView):
     queryset = ParkingSpot.objects.all()
     serializer_class = ParkingSpotSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+
+class ParkingAvailabilityView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(query_serializer=AvailabilityQuerySerializer)
+    def get(self, request, pk):
+        parking = ParkingLot.objects.filter(pk=pk).first()
+        if parking is None:
+            raise Http404
+        query = AvailabilityQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        start = query.validated_data['start_time']
+        end = query.validated_data['end_time']
+        busy = set(ParkingBooking.objects.filter(
+            parking_spot__parking=parking,
+            status='BOOKED',
+            start_time__lt=end,
+            end_time__gt=start,
+        ).values_list('parking_spot_id', flat=True))
+        spots = ParkingSpot.objects.filter(parking=parking).order_by('number')
+        return Response([
+            {'id': spot.id, 'number': spot.number, 'spot_type': spot.spot_type,
+             'available': parking.is_active and spot.is_active and spot.id not in busy}
+            for spot in spots
+        ])
 
 
 class ParkingBookingListCreateView(ListCreateAPIView):
@@ -41,6 +100,8 @@ class ParkingBookingListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         bookings = ParkingBooking.objects.all()
+        if not self.request.user.is_authenticated:
+            return bookings.none()
         if self.request.user.is_staff:
             return bookings
         return bookings.filter(user=self.request.user)
@@ -55,6 +116,8 @@ class ParkingBookingDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         bookings = ParkingBooking.objects.all()
+        if not self.request.user.is_authenticated:
+            return bookings.none()
         if self.request.user.is_staff:
             return bookings
         return bookings.filter(user=self.request.user)
@@ -89,32 +152,19 @@ class RouteSearchView(ListAPIView):
     permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
-        start = self.request.query_params.get('start_stop')
-        end = self.request.query_params.get('end_stop')
-        if not start or not end or not start.isdecimal() or not end.isdecimal():
+        if getattr(self, 'swagger_fake_view', False):
             return Route.objects.none()
-
-        start_orders = dict(RouteStop.objects.filter(stop_id=start).values_list('route_id', 'order'))
-        route_ids = [
-            route_id
-            for route_id, end_order in RouteStop.objects.filter(stop_id=end).values_list('route_id', 'order')
-            if route_id in start_orders and start_orders[route_id] < end_order
-        ]
-        return Route.objects.filter(id__in=route_ids, is_active=True).prefetch_related('route_stops__stop')
-
-
-class RoutePathView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, number):
-        if not Route.objects.filter(number=number, name='DEMO Route 88').exists():
-            raise Http404
-        path_file = settings.BASE_DIR / 'myapp' / 'fixtures' / 'route_paths.json'
-        with path_file.open(encoding='utf-8') as file:
-            paths = json.load(file)
-        if number not in paths:
-            raise Http404
-        return Response(paths[number])
+        from django.shortcuts import get_object_or_404
+        start_id = self.kwargs['start_id']
+        end_id = self.kwargs['end_id']
+        get_object_or_404(BusStop, pk=start_id)
+        get_object_or_404(BusStop, pk=end_id)
+        route_ids = []
+        for start_stop in RouteStop.objects.filter(stop_id=start_id, route__is_active=True):
+            end_stop = RouteStop.objects.filter(route=start_stop.route, stop_id=end_id).first()
+            if end_stop and start_stop.order < end_stop.order:
+                route_ids.append(start_stop.route_id)
+        return Route.objects.filter(pk__in=route_ids).prefetch_related('route_stops__stop')
 
 
 class RouteStopListCreateView(ListCreateAPIView):
@@ -134,6 +184,16 @@ class VehicleListCreateView(ListCreateAPIView):
     serializer_class = VehicleSerializer
     permission_classes = [IsAdminOrReadOnly]
 
+    def get_queryset(self):
+        queryset = Vehicle.objects.all()
+        value = self.request.query_params.get('route')
+        if value is not None:
+            if not value.isdecimal():
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({'route': '??????? ???????? ID'})
+            queryset = queryset.filter(route_id=value)
+        return queryset
+
 
 class VehicleDetailView(RetrieveUpdateDestroyAPIView):
     queryset = Vehicle.objects.all()
@@ -147,6 +207,8 @@ class TrafficIncidentListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         incidents = TrafficIncident.objects.all()
+        if not self.request.user.is_authenticated:
+            return incidents.none()
         if self.request.user.is_staff:
             return incidents
         return incidents.filter(created_by=self.request.user)
@@ -161,6 +223,8 @@ class TrafficIncidentDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         incidents = TrafficIncident.objects.all()
+        if not self.request.user.is_authenticated:
+            return incidents.none()
         if self.request.user.is_staff:
             return incidents
         return incidents.filter(created_by=self.request.user)
@@ -172,6 +236,8 @@ class ServiceRequestListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         requests = ServiceRequest.objects.all()
+        if not self.request.user.is_authenticated:
+            return requests.none()
         if self.request.user.is_staff:
             return requests
         return requests.filter(user=self.request.user)
@@ -186,6 +252,8 @@ class ServiceRequestDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         requests = ServiceRequest.objects.all()
+        if not self.request.user.is_authenticated:
+            return requests.none()
         if self.request.user.is_staff:
             return requests
         return requests.filter(user=self.request.user)

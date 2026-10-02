@@ -72,8 +72,8 @@ class SmartCityAPITests(APITestCase):
         self.assertEqual(invalid_order.status_code, 400)
 
         self.authenticate(self.user)
-        forward = self.client.get(f'/api/routes/search/?start_stop={a.pk}&end_stop={b.pk}')
-        backward = self.client.get(f'/api/routes/search/?start_stop={b.pk}&end_stop={a.pk}')
+        forward = self.client.get(f'/api/routes/search/{a.pk}/{b.pk}/')
+        backward = self.client.get(f'/api/routes/search/{b.pk}/{a.pk}/')
         self.assertEqual(len(forward.data), 1)
         self.assertEqual(len(backward.data), 0)
         self.assertEqual(len(forward.data[0]['route_stops']), 2)
@@ -89,6 +89,14 @@ class SmartCityAPITests(APITestCase):
         self.assertEqual(len(self.client.get('/api/bookings/').data), 0)
         self.assertEqual(self.client.patch(f'/api/bookings/{booking_id}/', {'status': 'CANCELLED'}).status_code, 404)
         self.assertEqual(self.client.post('/api/bookings/', self.booking_data()).status_code, 400)
+        availability = self.client.get(f'/api/parkings/{self.lot.pk}/availability/', {
+            'start_time': self.start.isoformat(), 'end_time': self.end.isoformat(),
+        })
+        self.assertFalse(availability.data[0]['available'])
+        adjacent = self.client.get(f'/api/parkings/{self.lot.pk}/availability/', {
+            'start_time': self.end.isoformat(), 'end_time': (self.end + timedelta(hours=1)).isoformat(),
+        })
+        self.assertTrue(adjacent.data[0]['available'])
 
         self.authenticate(self.user)
         self.assertEqual(self.client.patch(f'/api/bookings/{booking_id}/', {'status': 'CANCELLED'}).status_code, 200)
@@ -166,10 +174,7 @@ class SmartCityAPITests(APITestCase):
         self.assertEqual(Vehicle.objects.filter(plate_number='DEMO-88-01').count(), 1)
 
         self.authenticate(self.user)
-        route_path = self.client.get('/api/route-paths/88/')
-        self.assertEqual(route_path.status_code, 200)
-        self.assertTrue(route_path.data['is_demo'])
-        self.assertGreater(len(route_path.data['coordinates']), 8)
+        self.assertEqual(len(self.client.get(f'/api/routes/{route.pk}/').data['route_stops']), 8)
         spot = ParkingSpot.objects.filter(parking__name='DEMO Parking West').first()
         data = self.booking_data()
         data['parking_spot'] = spot.pk

@@ -7,9 +7,9 @@ from drf_yasg import openapi
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="My API",
+        title="Smart City API",
         default_version='v1',
-        description="API documentation",
+        description="Smart City: аккаунт, парковки, транспорт и обращения",
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),

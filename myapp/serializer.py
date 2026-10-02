@@ -5,6 +5,36 @@ from .models import (BusStop, ParkingBooking, ParkingLot, ParkingSpot, Route,
                      RouteStop, ServiceRequest, TrafficIncident, Vehicle)
 
 
+class AvailabilityQuerySerializer(serializers.Serializer):
+    start_time = serializers.DateTimeField()
+    end_time = serializers.DateTimeField()
+
+    def validate(self, attrs):
+        if attrs['end_time'] <= attrs['start_time']:
+            raise serializers.ValidationError('Окончание должно быть позже начала')
+        return attrs
+
+
+class AssistantInputSerializer(serializers.Serializer):
+    message = serializers.CharField(max_length=4000)
+
+
+class CameraInputSerializer(serializers.Serializer):
+    image = serializers.CharField(max_length=3000000)
+
+    def validate_image(self, value):
+        import base64
+        if not value.startswith('data:image/jpeg;base64,'):
+            raise serializers.ValidationError('Ожидается JPEG кадр')
+        try:
+            data = base64.b64decode(value.split(',', 1)[1], validate=True)
+        except ValueError:
+            raise serializers.ValidationError('Некорректный base64')
+        if not data.startswith(b'\xff\xd8\xff'):
+            raise serializers.ValidationError('Некорректный JPEG')
+        return value
+
+
 class ParkingLotSerializer(serializers.ModelSerializer):
     class Meta:
         model = ParkingLot
