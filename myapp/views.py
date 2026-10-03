@@ -14,7 +14,7 @@ from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
 from .serializer import (BusStopSerializer, ParkingBookingSerializer,ParkingLotSerializer, ParkingSpotSerializer, RouteSerializer,RouteStopSerializer, ServiceRequestSerializer,TrafficIncidentSerializer, VehicleSerializer)
 from .serializer import AvailabilityQuerySerializer, AvailabilitySpotSerializer
 from .serializer import AssistantInputSerializer, CameraInputSerializer
-from .ai import ask_provider
+from .ai import ask_provider, AIUnavailable, provider_configured
 from redis.exceptions import RedisError
 
 
@@ -28,11 +28,23 @@ class AssistantView(GenericAPIView):
         from .assistant_context import city_context, safe_actions
         from django.core.serializers.json import DjangoJSONEncoder
         context = json.loads(json.dumps(city_context(request.user), cls=DjangoJSONEncoder))
-        result = ask_provider({'task': 'assistant', **serializer.validated_data, 'context': context,
-                              'action_schema': ['fly_to(latitude,longitude)', 'show_cameras_near(latitude,longitude)',
-                                                'select_camera(id)', 'select_parking(id)', 'select_vehicle(id)',
-                                                'show_route(id)', 'toggle_layer(layer,enabled)']})
-        return Response({'answer': result['answer'], 'actions': safe_actions(result.get('actions'), context)})
+        from .assistant_guide import guide_answer
+        payload = {'task': 'assistant', **serializer.validated_data, 'context': context,
+                   'action_schema': ['fly_to(latitude,longitude)', 'show_cameras_near(latitude,longitude)',
+                                     'select_camera(id)', 'select_parking(id)', 'select_vehicle(id)',
+                                     'show_route(id)', 'toggle_layer(layer,enabled)']}
+        mode, degraded = 'guide', False
+        if provider_configured():
+            try:
+                result = ask_provider(payload)
+                mode = 'ai'
+            except AIUnavailable:
+                result = guide_answer(serializer.validated_data, context)
+                degraded = True
+        else:
+            result = guide_answer(serializer.validated_data, context)
+        return Response({'answer': result['answer'], 'actions': safe_actions(result.get('actions'), context),
+                         'mode': mode, 'degraded': degraded})
 
 
 class CameraAnalysisView(GenericAPIView):

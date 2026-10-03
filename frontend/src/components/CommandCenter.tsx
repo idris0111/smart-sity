@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity,
@@ -28,16 +28,17 @@ import type { CenterProps, Camera, MapEntity } from "../types";
 import { useCommandText, type TextKey } from "../command-i18n";
 import MapCanvas from "../CityMap.jsx";
 import CameraViewer from "./CameraViewer";
+import CityAssistant from "./CityAssistant";
 import { cityApi } from "../city-api";
 
 const LAYERS: { key: TextKey; icon: typeof Layers; color: string }[] = [
-  { key: "cameras", icon: CameraIcon, color: "#72c9ff" },
+  { key: "cameras", icon: CameraIcon, color: "var(--accent)" },
   { key: "previews", icon: CameraIcon, color: "#8aabd5" },
   { key: "freeParkings", icon: SquareParking, color: "#56d9b0" },
   { key: "parkings", icon: SquareParking, color: "#56d9b0" },
   { key: "vehicles", icon: Navigation, color: "#f7c46b" },
   { key: "stops", icon: MapPin, color: "#aeb5c9" },
-  { key: "routes", icon: Route, color: "#ff5277" },
+  { key: "routes", icon: Route, color: "var(--accent)" },
   { key: "incidents", icon: TriangleAlert, color: "#ff5476" },
   { key: "requests", icon: Activity, color: "#ac91ff" },
   { key: "buildings", icon: Building2, color: "#aeb5c9" },
@@ -69,6 +70,21 @@ export default function CommandCenter(props: CenterProps) {
     liveEvents,
   } = props;
   const t = useCommandText();
+  const searchInput = useRef<HTMLInputElement>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  useEffect(() => {
+    if (props.paletteOpen) searchInput.current?.focus();
+  }, [props.paletteOpen]);
+  useEffect(() => {
+    function key(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        props.closePalette?.();
+        setAiOpen(false);
+      }
+    }
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [props.closePalette]);
   const [clock, setClock] = useState(new Date());
   const [query, setQuery] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
@@ -145,19 +161,25 @@ export default function CommandCenter(props: CenterProps) {
   const searchResults = query.trim()
     ? collection
         .filter((e) =>
-          `${entityName(e)} ${"address" in e ? e.address : ""}`
+          `${e.kind} ${e.id} ${entityName(e)} ${"address" in e ? e.address : ""} ${"vehicle_type" in e ? `${e.vehicle_type} ${e.id}` : ""}`
             .toLowerCase()
             .includes(query.toLowerCase()),
         )
         .slice(0, 8)
-    : [];
+    : props.paletteOpen
+      ? collection.slice(0, 8)
+      : [];
   const routeResults = query.trim()
     ? data.routes
         .filter((r) =>
-          `${r.number} ${r.name}`.toLowerCase().includes(query.toLowerCase()),
+          `route ${r.number} route ${r.id} ${r.name}`
+            .toLowerCase()
+            .includes(query.toLowerCase()),
         )
         .slice(0, 4)
-    : [];
+    : props.paletteOpen
+      ? data.routes.slice(0, 4)
+      : [];
   const selectedCamera =
     selected?.kind === "camera"
       ? data.cameras.find((c) => c.id === selected.id)
@@ -239,16 +261,30 @@ export default function CommandCenter(props: CenterProps) {
           <small>UTC+5</small>
         </time>
       </div>
-      <div className="cc-search">
+      {props.paletteOpen && (
+        <button
+          className="cc-palette-scrim"
+          aria-label={t("close")}
+          onClick={() => props.closePalette?.()}
+        />
+      )}
+      <div className={`cc-search ${props.paletteOpen ? "palette-open" : ""}`}>
         <Search size={17} />
         <input
+          ref={searchInput}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("search")}
           aria-label={t("search")}
         />
-        {query && (
-          <button onClick={() => setQuery("")} aria-label={t("close")}>
+        {(query || props.paletteOpen) && (
+          <button
+            onClick={() => {
+              setQuery("");
+              props.closePalette?.();
+            }}
+            aria-label={t("close")}
+          >
             <X size={14} />
           </button>
         )}
@@ -261,11 +297,12 @@ export default function CommandCenter(props: CenterProps) {
                   void props.onRouteSelect?.(route.number, route.id);
                   setFocusRoute(true);
                   setQuery("");
+                  props.closePalette?.();
                 }}
               >
                 <Route size={15} />
                 <span>
-                  {route.number} ? {route.name}
+                  {route.number} · {route.name}
                 </span>
                 <ChevronRight size={14} />
               </button>
@@ -276,7 +313,23 @@ export default function CommandCenter(props: CenterProps) {
                   key={`${e.kind}-${e.id}`}
                   onClick={() => {
                     setSelected(e);
+                    const layer = {
+                      parking: "parkings",
+                      stop: "stops",
+                      camera: "cameras",
+                      vehicle: "vehicles",
+                      incident: "incidents",
+                      request: "requests",
+                    }[e.kind];
+                    setFilters({
+                      ...filters,
+                      [layer]: true,
+                      demo: entityName(e).startsWith("DEMO")
+                        ? true
+                        : filters.demo,
+                    });
                     setQuery("");
+                    props.closePalette?.();
                   }}
                 >
                   <MapPin size={15} />
@@ -308,13 +361,8 @@ export default function CommandCenter(props: CenterProps) {
             <button
               key={key}
               className={`cc-layer ${filters[key] ? "enabled" : ""}`}
-              disabled={key === "terrain" && !import.meta.env.VITE_TERRAIN_URL}
               onClick={() => toggle(key)}
-              title={
-                key === "terrain" && !import.meta.env.VITE_TERRAIN_URL
-                  ? t("setup")
-                  : t(key)
-              }
+              title={t(key)}
             >
               <Icon size={16} style={{ color }} />
               <span>{t(key)}</span>
@@ -355,7 +403,7 @@ export default function CommandCenter(props: CenterProps) {
             {day ? <Moon size={14} /> : <Sun size={14} />}{" "}
             {t(day ? "night" : "day")}
           </button>
-          <button onClick={() => navigate("assistant")}>
+          <button onClick={() => setAiOpen(true)}>
             <Bot size={14} />
             {t("ai")}
             <ArrowUpRight size={14} />
@@ -656,6 +704,28 @@ export default function CommandCenter(props: CenterProps) {
           {t("source")}: API
         </div>
       </div>
+      {aiOpen && (
+        <motion.aside
+          className="cc-ai-sheet cc-glass"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <button
+            className="cc-ai-close"
+            aria-label={t("close")}
+            onClick={() => setAiOpen(false)}
+          >
+            <X size={16} />
+          </button>
+          <CityAssistant
+            {...props}
+            onMapAction={async (action) => {
+              await props.onMapAction?.(action);
+              setAiOpen(false);
+            }}
+          />
+        </motion.aside>
+      )}
       <div className="cc-mobile-tabs">
         <button
           onClick={() =>

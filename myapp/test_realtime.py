@@ -98,3 +98,23 @@ class WebSocketTests(TransactionTestCase):
             self.assertEqual((await valid.receive_output())['code'], 4403)
             await valid.disconnect()
         async_to_sync(scenario)()
+
+    def test_parking_counts_are_public_without_booking_identity(self):
+        async def scenario():
+            other = await self.websocket(self.other)
+            try:
+                lot = await database_sync_to_async(ParkingLot.objects.create)(name='Public inventory',address='Public',latitude=38,longitude=68)
+                await other.receive_json_from()
+                spot = await database_sync_to_async(ParkingSpot.objects.create)(parking=lot,number='1')
+                await other.receive_json_from()
+                now=timezone.now()
+                await database_sync_to_async(ParkingBooking.objects.create)(user=self.owner,parking_spot=spot,start_time=now-timedelta(minutes=1),end_time=now+timedelta(hours=1))
+                event=await other.receive_json_from()
+                self.assertEqual(event['kind'],'parking.updated')
+                self.assertEqual(event['data']['free_spots'],0)
+                self.assertNotIn('user',event['data'])
+                self.assertNotIn('parking_spot',event['data'])
+                self.assertTrue(await other.receive_nothing(timeout=0.1))
+            finally:
+                await other.disconnect()
+        async_to_sync(scenario)()

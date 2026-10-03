@@ -1,5 +1,6 @@
 import { tr, getLocale, useLanguage } from "./i18n.js";
 import LanguageSwitch from './LanguageSwitch.jsx';
+import AccentSwitch from './AccentSwitch.jsx';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { connectCity } from './realtime.js';
@@ -39,9 +40,11 @@ export default function App() {
   const sessionVersion = useRef(0);
   const activeRouteId = useRef(null);
   const [authenticated, setAuthenticated] = useState(Boolean(session.access));
+  const [paletteOpen,setPaletteOpen] = useState(false);
   const routerLocation = useLocation();
   const routerNavigate = useNavigate();
   const requestedPage = routerLocation.pathname.slice(1);
+  useEffect(()=>{if(!authenticated)return;function key(e){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPaletteOpen(true);routerNavigate('/map');}}window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[authenticated,routerNavigate]);
   const page = NAV.some(([key]) => key === requestedPage) ? requestedPage : 'dashboard';
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -127,6 +130,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {if (authenticated) loadData();}, [authenticated, loadData]);
+  useEffect(()=>{
+    if(!authenticated||realtimeStatus==='connected')return;
+    let active=true;
+    async function poll(){
+      if(document.hidden)return;
+      try {
+        const [vehicles,cameras,parkings]=await Promise.all([api('/api/vehicles/'),api('/api/cameras/'),api('/api/parkings/')]);
+        if(active&&session.access){setData(current=>({...current,vehicles,cameras,parkings}));setLastUpdated(new Date());}
+      }catch{/* The connection indicators and refresh button remain available. */}
+    }
+    const timer=setInterval(poll,15000);
+    return()=>{active=false;clearInterval(timer);};
+  },[authenticated,realtimeStatus]);
   useEffect(() => {
     if (!authenticated) return;
     const timer = setInterval(() => { api('/api/system/status/').then(setSystem).catch(() => setSystem(null)); }, 30000);
@@ -161,6 +177,7 @@ export default function App() {
   async function signOut() {
     sessionVersion.current += 1;
     activeRouteId.current = null;
+    setPaletteOpen(false);
     try {if (session.refresh) await api('/account/logout/', { method: 'POST', body: { refresh: session.refresh } });} catch {/* clear local tokens regardless */}
     session.clear();
     setAuthenticated(false);
@@ -210,7 +227,7 @@ export default function App() {
 
   if (!authenticated) return <AuthPage language={language} onDone={() => {setAuthenticated(true);routerNavigate('/dashboard', { replace: true });}} />;
 
-  const common = { data, routePath, routeError, filters, setFilters, selected, setSelected, navigate, reload: loadData, notify: setToast, stats, loading, profile, lastUpdated, language, realtimeStatus, system, liveEvents, onRouteSelect: selectMapRoute };
+  const common = { data, routePath, routeError, filters, setFilters, selected, setSelected, navigate, reload: loadData, notify: setToast, stats, loading, profile, lastUpdated, language, realtimeStatus, system, liveEvents, onRouteSelect: selectMapRoute, onMapAction, paletteOpen, closePalette: ()=>setPaletteOpen(false) };
   const pageContent = {
     dashboard: <CommandCenter {...common} />,
     map: <CommandCenter {...common} />,
@@ -247,6 +264,7 @@ export default function App() {
           <div className="topbar-actions">
             <form className="top-search" onSubmit={runSearch}><Search size={17} /><input aria-label={tr("Поиск объектов")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.nav.search} /><kbd>↵</kbd></form>
             <LanguageSwitch />
+            <AccentSwitch />
             <button className="icon-button" onClick={loadData} title={tr("Обновить данные")}><RefreshCw size={18} className={loading ? 'spin' : ''} /></button>
             <button className="icon-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title={tr("Сменить тему")}>{theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}</button>
             <button className="user-pill" onClick={() => navigate('profile')}><span className="avatar">{profile?.username?.[0]?.toUpperCase() || 'U'}</span><span>{profile?.username || tr("Профиль")}</span></button>

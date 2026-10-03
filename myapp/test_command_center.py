@@ -44,6 +44,17 @@ class RoadRoutingTests(TestCase):
         self.assertFalse(RouteGeometry.objects.exists())
 
     @patch('myapp.road_routing.urlopen')
+    def test_route_id_selects_correct_direction_when_numbers_match(self, provider):
+        provider.side_effect=lambda *a,**kw:self.provider()
+        other=Route.objects.create(number='4',name='Other direction')
+        for original in self.route.route_stops.all():
+            RouteStop.objects.create(route=other,stop=original.stop,order=original.order)
+        client=APIClient();client.force_authenticate(get_user_model().objects.create_user(username='route-viewer'))
+        result=client.get(f'/api/route-paths/4/?route_id={other.pk}')
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.data['route_id'],other.pk)
+
+    @patch('myapp.road_routing.urlopen')
     def test_rejects_distant_waypoints(self, provider):
         data=json.loads(self.provider().read());data['waypoints'][0]['distance']=300
         provider.return_value=BytesIO(json.dumps(data).encode())
@@ -94,6 +105,13 @@ class CameraTests(TestCase):
         self.assertEqual(self.client.post(f'/api/ai-alerts/{alert.pk}/review/',{'action':'confirm'},format='json').status_code,200)
         self.assertEqual(self.client.post(f'/api/ai-alerts/{alert.pk}/review/',{'action':'confirm'},format='json').status_code,400)
         self.assertEqual(TrafficIncident.objects.count(),1)
+
+    def test_camera_delete_is_staff_only(self):
+        url=f'/api/cameras/{self.camera.pk}/'
+        self.assertEqual(self.client.delete(url).status_code,403)
+        self.client.force_authenticate(self.staff)
+        self.assertEqual(self.client.delete(url).status_code,204)
+        self.assertFalse(Camera.objects.filter(pk=self.camera.pk).exists())
 
     def test_ai_context_is_scoped_and_actions_validated(self):
         TrafficIncident.objects.create(created_by=self.staff,title='Private',description='Private',incident_type='OTHER',latitude=38,longitude=68)
@@ -147,6 +165,36 @@ class CameraTests(TestCase):
         async def consume():
             return b''.join([chunk async for chunk in response.streaming_content])
         self.assertIn(b'Content-Type: image/jpeg',async_to_sync(consume)())
+
+    @patch('myapp.cameras.open_camera')
+    def test_media_proxy_rejects_html(self, upstream):
+        self.camera.stream_type='MJPEG';self.camera.stream_url='https://camera.example/mjpeg';self.camera.save()
+        stream=BytesIO(b'<script>not-media</script>');stream.headers=Message();stream.headers['Content-Type']='text/html'
+        upstream.return_value=stream
+        url=self.client.post(f'/api/cameras/{self.camera.pk}/access/').data['url']
+        self.assertEqual(APIClient().get(url).status_code,503)
+
+    @patch('myapp.camera_media.snapshot',return_value=(b'SNAPSHOT','image/jpeg'))
+    @patch('myapp.ai.ask_provider',return_value={'answer':'Possible event','confidence':0.8})
+    def test_analysis_task_waits_for_operator(self, ai, snapshot):
+        from .tasks import analyze_camera
+        alert=CameraAlert.objects.create(camera=self.camera,requested_by=self.staff)
+        self.assertEqual(analyze_camera.run(alert.pk),'REVIEW')
+        self.assertEqual(TrafficIncident.objects.count(),0)
+        alert.refresh_from_db()
+        self.assertEqual(alert.confidence,0.8)
+
+    @patch('myapp.camera_media.open_camera')
+    def test_camera_health_online_offline_and_cache(self, upstream):
+        from .tasks import check_camera_health
+        from django.core.cache import cache
+        other=Camera.objects.create(name='Other',latitude=38,longitude=68,rights_confirmed=True,stream_url='https://camera.example/other.jpg')
+        upstream.side_effect=[BytesIO(b'image'),OSError('Offline')]
+        self.assertEqual(check_camera_health.run(),2)
+        self.camera.refresh_from_db();other.refresh_from_db()
+        self.assertEqual((self.camera.status,other.status),('ONLINE','OFFLINE'))
+        self.assertIsNotNone(self.camera.last_seen)
+        self.assertEqual(cache.get(f'city:camera:{other.pk}')['status'],'OFFLINE')
 
     def test_free_parking_count_does_not_reveal_other_users_bookings(self):
         lot=ParkingLot.objects.create(name='Lot',address='Lot',latitude=38,longitude=68)

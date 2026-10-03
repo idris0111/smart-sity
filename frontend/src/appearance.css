@@ -1,0 +1,140 @@
+/* One accent for authentication, the dashboard and MapLibre UI. */
+:root {
+  --brand-hue: 204;
+  --brand-button-start: 32%;
+  --brand-button-end: 40%;
+}
+:root[data-accent="red"] {
+  --brand-hue: 348;
+  --brand-button-start: 34%;
+  --brand-button-end: 43%;
+}
+:root[data-accent="green"] {
+  --brand-hue: 155;
+  --brand-button-start: 22%;
+  --brand-button-end: 28%;
+}
+:root .app-shell,
+:root {
+  --accent: hsl(var(--brand-hue) 100% 72%);
+  --accent-soft: hsl(var(--brand-hue) 100% 72% / 0.07);
+  --accent-border: hsl(var(--brand-hue) 100% 72% / 0.2);
+  --teal: var(--accent);
+  --teal-dark: hsl(var(--brand-hue) 80% 60%);
+}
+:root[data-theme="light"] .app-shell {
+  --accent: hsl(var(--brand-hue) 80% 38%);
+  --teal: var(--accent);
+  --teal-dark: hsl(var(--brand-hue) 80% 30%);
+  --bg: #eef2f7;
+  --surface: #fff;
+  --surface-2: #f3f6fa;
+  --text: #152237;
+  --muted: #56677d;
+  --border: #15223720;
+  --sidebar: #f8faff;
+}
+.accent-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--accent);
+  padding: 6px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  font-size: 11px;
+  letter-spacing: normal;
+}
+.accent-switch select {
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  border: 0;
+  min-height: 28px;
+  max-width: 95px;
+}
+.accent-switch option {
+  background: #111621;
+  color: #e8edf5;
+}
+.accent-switch:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+:root .app-shell .button.primary,
+:root .city-auth-submit,
+:root .app-shell .send-button {
+  background: linear-gradient(
+    110deg,
+    hsl(var(--brand-hue) 80% var(--brand-button-start)),
+    hsl(var(--brand-hue) 80% var(--brand-button-end))
+  );
+  color: #fff;
+  border-color: var(--accent-border);
+}
+:root .city-auth-notice {
+  color: hsl(var(--brand-hue) 55% 85%);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+:root
+  .city-auth-input:has(input:not(:placeholder-shown)):not(
+    :has([aria-invalid="true"])
+  )
+  > svg {
+  color: var(--accent);
+}
+.city-auth-page-header > span:last-child {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.assistant-starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 15px;
+}
+.assistant-starters button {
+  font-size: 12px;
+}
+.assistant-guide-note {
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.city-chat .chat-messages {
+  scroll-behavior: smooth;
+}
+.city-chat .chat-message.user .message-bubble {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.city-chat .chat-message.error .message-bubble {
+  border-color: var(--danger);
+}
+.city-chat .message-bubble {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .topbar-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .accent-switch {
+    padding: 2px 6px;
+  }
+  .city-auth-page-header {
+    align-items: flex-start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .city-chat .chat-messages {
+    scroll-behavior: auto;
+  }
+}

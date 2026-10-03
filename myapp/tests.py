@@ -274,8 +274,9 @@ class SmartCityAPITests(APITestCase):
         self.authenticate(self.user)
         with patch.dict('os.environ', {}, clear=True):
             result = self.client.post('/api/assistant/', {'message': 'Hello'})
-            self.assertEqual(result.status_code, 503)
-            self.assertEqual(str(result.data['detail']), 'AI is not configured.')
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.data['mode'], 'guide')
+            self.assertIn('Привет', result.data['answer'])
             self.assertEqual(self.client.post('/api/camera/analyze/', {'image': 'data:image/jpeg;base64,/9j/'}).status_code, 503)
         self.assertEqual(self.client.post('/api/assistant/', {}).status_code, 400)
         self.assertEqual(self.client.post('/api/camera/analyze/', {'image': 'invalid'}).status_code, 400)

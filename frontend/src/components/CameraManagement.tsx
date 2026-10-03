@@ -90,6 +90,19 @@ export default function CameraManagement({
       notify(e instanceof Error ? e.message : t("unavailable"));
     }
   }
+  async function remove(camera: Camera) {
+    if (!window.confirm(`${t("deleteConfirm")} ${camera.name}`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/cameras/${camera.id}/`, { method: "DELETE" });
+      setOpened(null);
+      await reload();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : t("unavailable"));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function review(id: number, action: string) {
     setBusy(true);
     try {
@@ -255,6 +268,13 @@ export default function CameraManagement({
                         {t("disable")}
                       </button>
                     )}
+                    <button
+                      disabled={busy}
+                      className="button danger"
+                      onClick={() => remove(camera)}
+                    >
+                      {t("delete")}
+                    </button>
                   </>
                 )}
               </div>

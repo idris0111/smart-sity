@@ -22,8 +22,15 @@ class AvailabilitySpotSerializer(serializers.Serializer):
     available = serializers.BooleanField()
 
 
+class AssistantMessageSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=('user', 'assistant'))
+    content = serializers.CharField(max_length=4000)
+
+
 class AssistantInputSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=4000)
+    history = serializers.ListSerializer(child=AssistantMessageSerializer(), max_length=12, required=False, default=list)
+    language = serializers.ChoiceField(choices=('ru', 'en', 'tg'), default='ru')
 
 
 class CameraInputSerializer(serializers.Serializer):

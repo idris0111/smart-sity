@@ -428,7 +428,7 @@
   padding: 10px 0;
   background: none;
   border: 0;
-  color: #72bfee;
+  color: hsl(var(--brand-hue) 78.5% 69.0%);
   text-align: left;
   cursor: pointer;
 }
@@ -1252,11 +1252,11 @@
   --text: #e8edf5;
   --muted: #8d9ab1;
   --border: #ffffff12;
-  --accent: #72c9ff;
-  --accent-soft: #72c9ff12;
-  --accent-border: #72c9ff30;
-  --teal: #72c9ff;
-  --teal-dark: #58b3ec;
+  --accent: hsl(var(--brand-hue) 100.0% 72.4%);
+  --accent-soft: hsl(var(--brand-hue) 100.0% 72.4% / 0.071);
+  --accent-border: hsl(var(--brand-hue) 100.0% 72.4% / 0.188);
+  --teal: hsl(var(--brand-hue) 100.0% 72.4%);
+  --teal-dark: hsl(var(--brand-hue) 79.6% 63.5%);
   --sidebar: #0b101a;
 }
 .app-shell .sidebar {
@@ -1264,14 +1264,14 @@
   border-right-color: #ffffff0c;
 }
 .app-shell .brand-mark {
-  background: #72c9ff0a;
-  border-color: #72c9ff35;
-  color: #72c9ff;
+  background: hsl(var(--brand-hue) 100.0% 72.4% / 0.039);
+  border-color: hsl(var(--brand-hue) 100.0% 72.4% / 0.208);
+  color: hsl(var(--brand-hue) 100.0% 72.4%);
   box-shadow: none;
 }
 .app-shell .brand-thin,
 .app-shell .nav-item.active svg {
-  color: #72c9ff;
+  color: hsl(var(--brand-hue) 100.0% 72.4%);
 }
 .app-shell .brand small,
 .app-shell .nav-caption {
@@ -1281,13 +1281,13 @@
   color: #8e9db5;
 }
 .app-shell .nav-item.active {
-  color: #d8eaff;
-  background: #72c9ff10;
-  border-color: #72c9ff20;
+  color: hsl(var(--brand-hue) 100.0% 92.4%);
+  background: hsl(var(--brand-hue) 100.0% 72.4% / 0.063);
+  border-color: hsl(var(--brand-hue) 100.0% 72.4% / 0.125);
   box-shadow: none;
 }
 .app-shell .nav-active-indicator {
-  background: #72c9ff;
+  background: hsl(var(--brand-hue) 100.0% 72.4%);
   box-shadow: none;
 }
 .app-shell .sidebar-live strong {
@@ -1297,23 +1297,23 @@
   color: #6c7e9c;
 }
 .cc-primary {
-  border-color: #72c9ff40;
-  background: #72c9ff12;
-  color: #a2d9fb;
+  border-color: hsl(var(--brand-hue) 100.0% 72.4% / 0.251);
+  background: hsl(var(--brand-hue) 100.0% 72.4% / 0.071);
+  color: hsl(var(--brand-hue) 91.8% 81.0%);
 }
 .cc-route-info {
-  color: #72c9ff;
+  color: hsl(var(--brand-hue) 100.0% 72.4%);
 }
 .enabled .cc-toggle {
-  background: #72c9ff25;
+  background: hsl(var(--brand-hue) 100.0% 72.4% / 0.145);
 }
 .enabled .cc-toggle:after {
-  background: #72c9ff;
+  background: hsl(var(--brand-hue) 100.0% 72.4%);
 }
 .cc-symbol {
-  color: #72c9ff;
-  background: #72c9ff12;
-  border-color: #72c9ff30;
+  color: hsl(var(--brand-hue) 100.0% 72.4%);
+  background: hsl(var(--brand-hue) 100.0% 72.4% / 0.071);
+  border-color: hsl(var(--brand-hue) 100.0% 72.4% / 0.188);
 }
 .cc-camera-list .camera-placeholder {
   pointer-events: none;
@@ -1351,4 +1351,99 @@
   border-radius: 6px;
   padding: 7px;
   font-size: 9px;
+}
+
+.button.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid #f4708530;
+}
+.cc-palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  border: 0;
+  background: #050810b8;
+  backdrop-filter: blur(5px);
+}
+.cc-search.palette-open {
+  position: fixed;
+  top: 24%;
+  left: 50%;
+  width: min(540px, 90vw);
+  max-width: 540px;
+  z-index: 1501;
+  transform: translateX(-50%);
+  padding: 18px;
+  border-color: hsl(var(--brand-hue) 100.0% 72.4% / 0.314);
+  box-shadow: 0 20px 70px #0009;
+}
+.cc-ai-sheet {
+  position: absolute;
+  right: 22px;
+  top: 86px;
+  bottom: 51px;
+  width: min(410px, calc(100% - 40px));
+  z-index: 8;
+  overflow: auto;
+  padding: 20px;
+}
+.cc-ai-sheet .page-heading {
+  margin-bottom: 16px;
+  padding-right: 20px;
+}
+.cc-ai-sheet .page-heading h1 {
+  font-size: 19px;
+}
+.cc-ai-sheet .page-heading p {
+  font-size: 10px;
+}
+.cc-ai-sheet .page-heading > .connection-badge {
+  display: none;
+}
+.cc-ai-sheet .city-chat {
+  min-height: 300px;
+  padding: 12px;
+}
+.cc-ai-sheet .city-chat .section-top {
+  display: none;
+}
+.cc-ai-sheet .city-chat .chat-messages {
+  height: calc(100dvh - 400px);
+  min-height: 130px;
+  padding: 5px;
+}
+.cc-ai-sheet .city-chat .message-bubble {
+  font-size: 11px;
+}
+.cc-ai-sheet .city-chat .message-avatar {
+  display: none;
+}
+.cc-ai-sheet .city-chat-input input {
+  font-size: 10px;
+  padding: 10px;
+}
+.cc-ai-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  background: none;
+  border: 0;
+  color: #9cb2d1;
+  cursor: pointer;
+}
+@media (max-width: 680px) {
+  .cc-ai-sheet {
+    left: 10px;
+    right: 10px;
+    width: auto;
+    top: 64px;
+    bottom: 85px;
+    padding: 15px;
+  }
+  .cc-search.palette-open {
+    left: 50%;
+    right: auto;
+    top: 18%;
+  }
 }

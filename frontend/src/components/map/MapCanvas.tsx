@@ -21,6 +21,8 @@ import type {
 } from "../../types";
 import "maplibre-gl/dist/maplibre-gl.css";
 import CameraViewer from "../CameraViewer";
+import { useCommandText } from "../../command-i18n";
+import { useAccent, ACCENTS } from "../../appearance.js";
 setWorkerUrl(workerUrl);
 const COLORS: Record<EntityKind, string> = {
   parking: "#56d9b0",
@@ -73,6 +75,8 @@ export default function MapCanvas({
   day = false,
 }: Props) {
   const map = useRef<MapRef>(null);
+  const t = useCommandText();
+  const accent = ACCENTS[useAccent()].color;
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [hoverCamera, setHoverCamera] = useState<number | null>(null);
@@ -108,7 +112,7 @@ export default function MapCanvas({
         id: item.id,
         kind: item.kind,
         symbol: SYMBOLS[item.kind],
-        color: COLORS[item.kind],
+        color: item.kind === "camera" ? accent : COLORS[item.kind],
         selected: selected?.kind === item.kind && selected.id === item.id,
       },
     })),
@@ -131,7 +135,7 @@ export default function MapCanvas({
   );
   const cameras = useMemo(
     () => points(entities.filter((e) => e.kind === "camera")),
-    [entities, selected],
+    [entities, selected, accent],
   );
   const incidentPoints = useMemo(
     () => points(entities.filter((e) => e.kind === "incident")),
@@ -260,7 +264,14 @@ export default function MapCanvas({
       if (entity) onSelect?.(entity);
     }
   }
-  const terrain = import.meta.env.VITE_TERRAIN_URL;
+  const terrain =
+    import.meta.env.VITE_TERRAIN_URL ||
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+  const terrainTiles = terrain.includes("{z}");
+  const terrainEncoding =
+    import.meta.env.VITE_TERRAIN_ENCODING === "mapbox" || !terrainTiles
+      ? "mapbox"
+      : "terrarium";
   const hovered =
     filters.previews && !onPickPoint
       ? data.cameras?.find((c) => c.id === hoverCamera)
@@ -306,7 +317,11 @@ export default function MapCanvas({
           <Source
             id="terrain-dem"
             type="raster-dem"
-            url={terrain}
+            url={terrainTiles ? undefined : terrain}
+            tiles={terrainTiles ? [terrain] : undefined}
+            encoding={terrainEncoding}
+            maxzoom={15}
+            attribution='Terrain: <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Mapzen / USGS / NOAA / contributors</a>'
             tileSize={256}
           />
         )}
@@ -315,7 +330,7 @@ export default function MapCanvas({
             id="road-glow"
             type="line"
             paint={{
-              "line-color": "#65bfff",
+              "line-color": accent,
               "line-width": 14,
               "line-opacity": 0.18,
             }}
@@ -325,7 +340,7 @@ export default function MapCanvas({
             id="road-line"
             type="line"
             paint={{
-              "line-color": "#72c9ff",
+              "line-color": accent,
               "line-width": 4,
               "line-opacity": 0.95,
             }}
@@ -368,7 +383,7 @@ export default function MapCanvas({
             type="circle"
             filter={["has", "point_count"]}
             paint={{
-              "circle-color": "#72c9ff",
+              "circle-color": accent,
               "circle-radius": [
                 "step",
                 ["get", "point_count"],
@@ -397,7 +412,7 @@ export default function MapCanvas({
             type="circle"
             filter={["!", ["has", "point_count"]]}
             paint={{
-              "circle-color": "#72c9ff",
+              "circle-color": accent,
               "circle-radius": ["case", ["get", "selected"], 13, 9],
               "circle-stroke-width": 3,
               "circle-stroke-color": "#102133",
@@ -478,7 +493,7 @@ export default function MapCanvas({
             map.current?.getMap().triggerRepaint();
           }}
         >
-          {error}
+          {t("mapUnavailable")}
         </button>
       )}
     </div>

@@ -1,7 +1,18 @@
 import { useLanguage } from "./i18n.js";
 const text = {
+  delete: ["Удалить", "Delete", "Нест кардан"],
+  deleteConfirm: [
+    "Удалить запись и связанные с ней данные?",
+    "Delete this record and its related data?",
+    "Ин сабт ва маълумоти вобастаи он нест карда шавад?",
+  ],
   control: ["Центр управления", "Command center", "Маркази идоракунӣ"],
   layers: ["Слои карты", "Map layers", "Қабатҳои харита"],
+  mapUnavailable: [
+    "Источник карты недоступен",
+    "Map source unavailable",
+    "Манбаи харита дастнорас аст",
+  ],
   addObject: ["Добавить", "Add", "Илова"],
   latitude: ["Широта", "Latitude", "Арз"],
   longitude: ["Долгота", "Longitude", "Тӯл"],
@@ -122,11 +133,52 @@ const text = {
   crowd: ["Плотность людей", "Crowd density", "Зичии одамон"],
   news: ["Городские новости", "City news", "Хабарҳои шаҳр"],
   ai: ["AI-помощник", "AI assistant", "Ёвари AI"],
+  map: ["Карта", "Map", "Харита"],
+  aiGreeting: [
+    "Привет! Чем помочь с городом сегодня?",
+    "Hi! How can I help with the city today?",
+    "Салом! Имрӯз бо шаҳр чӣ кӯмак лозим аст?",
+  ],
+  aiGuide: ["Локальный помощник", "Local guide", "Ёвари маҳаллӣ"],
+  aiGuideNote: [
+    "Работает встроенный справочник по данным проекта. Для свободного общения подключите AI-сервис.",
+    "The built-in guide uses project data. Connect an AI service for open-ended conversation.",
+    "Роҳнамои дохилӣ аз маълумоти лоиҳа истифода мебарад. Барои суҳбати озод хидмати AI-ро пайваст кунед.",
+  ],
+  aiDegraded: [
+    "AI-сервис сейчас недоступен. Продолжу помогать как локальный справочник.",
+    "The AI service is currently unavailable. I can still help as a local guide.",
+    "Хидмати AI ҳоло дастнорас аст. Ҳамчун роҳнамои маҳаллӣ кӯмак мекунам.",
+  ],
+  aiThinking: [
+    "Разбираюсь в твоём вопросе…",
+    "Working through your question…",
+    "Саволи шуморо баррасӣ мекунам…",
+  ],
+  aiParkingQuestion: [
+    "Где есть свободные места?",
+    "Where are parking spaces available?",
+    "Ҷойҳои холии таваққуф куҷоянд?",
+  ],
+  aiRoutesQuestion: [
+    "Какие есть маршруты?",
+    "What routes are available?",
+    "Кадом хатсайрҳо ҳастанд?",
+  ],
+  aiCameraQuestion: ["Покажи камеры", "Show cameras", "Камераҳоро нишон деҳ"],
+  aiClear: ["Новый разговор", "New conversation", "Суҳбати нав"],
+  aiError: [
+    "Не получилось отправить сообщение. Проверь подключение и попробуй ещё раз.",
+    "Could not send your message. Check your connection and try again.",
+    "Паём фиристода нашуд. Пайвастшавиро санҷида, боз кӯшиш кунед.",
+  ],
+  aiRetry: ["Повторить", "Try again", "Боз кӯшиш кардан"],
   day: ["Светлая карта", "Day map", "Харитаи равшан"],
   night: ["Тёмная карта", "Night map", "Харитаи торик"],
   demo: ["Демо-данные", "Demo data", "Маълумоти намунавӣ"],
 } as const;
 export type TextKey = keyof typeof text;
+export const commandTranslations = text;
 export function useCommandText() {
   const [language] = useLanguage();
   return (key: TextKey) =>

@@ -14,6 +14,12 @@ for(const [key,translations] of Object.entries(copy)) {
 const server=await createServer({ optimizeDeps:{noDiscovery:true,include:[]}, server:{middlewareMode:true},appType:'custom',plugins:[{name:'locale-check-map',enforce:'pre',resolveId(source){if(source.endsWith('/CityMap.jsx'))return '\0map-check'},load(id){if(id==='\0map-check')return 'export default function CityMap(){return null}'} }]})
 try {
  const i18n=await server.ssrLoadModule('/src/i18n.js')
+ const {commandTranslations}=await server.ssrLoadModule('/src/command-i18n.ts')
+ for(const [key,values] of Object.entries(commandTranslations)) {
+  assert.equal(values.length,3,key)
+  for(const value of values) assert.ok(typeof value==='string'&&value.length>0,key)
+ }
+ console.log(`OK ${Object.keys(commandTranslations).length} command-center labels: ru/en/tg`)
  const pages=await server.ssrLoadModule('/src/Pages.jsx')
  const {default:Auth}=await server.ssrLoadModule('/src/AuthPage.jsx')
  const {default:Center}=await server.ssrLoadModule('/src/components/CommandCenter.tsx')
@@ -28,6 +34,7 @@ try {
   assert.ok(html.includes(i18n.tr('Welcome back')))
   assert.ok(html.includes('name="username"'))
   assert.ok(html.includes('value="tg"'))
+  for (const accent of ['blue','red','green']) assert.ok(html.includes(`value="${accent}"`), `login accent option: ${accent}`)
   for(const name of ['DashboardPage','MapPage','ParkingPage','RoutesPage','IncidentsPage','RequestsPage','CameraPage','AssistantPage','ProfilePage']) assert.ok(renderToStaticMarkup(React.createElement(pages[name],{...props,language})).length>100,name)
   const centerProps={...props,language,data:{...props.data,cameras:[],alerts:[]},routePath:null,profile:{username:'admin',is_staff:true},system:{database:'online',redis:'disabled',worker:'offline',ai:false,layers:[]},liveEvents:[],realtimeStatus:'disconnected',onMapAction:async()=>{}}
   for(const Component of [Center,Cameras,RoadRoutes,Admin,Assistant]) {

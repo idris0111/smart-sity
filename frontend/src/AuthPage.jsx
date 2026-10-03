@@ -1,5 +1,6 @@
 import { tr, getLocale } from "./i18n.js";
 import LanguageSwitch from './LanguageSwitch.jsx';
+import AccentSwitch from './AccentSwitch.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Building2, Eye, EyeOff, LockKeyhole, LoaderCircle, MapPin, ShieldCheck, UserRound, Route, SquareParking } from 'lucide-react';
 import { login, register } from './api.js';
@@ -130,7 +131,7 @@ export default function AuthPage({ onDone }) {
 
   return <main className="city-auth">
     <div className="city-auth-ambient" aria-hidden="true"><i /><i /></div>
-    <header className="city-auth-page-header"><span>SMART CITY <i>/</i>{tr("DUSHANBE")}</span><span><LanguageSwitch /><ShieldCheck size={14} />{tr("ACCOUNT ACCESS")}</span></header>
+    <header className="city-auth-page-header"><span>SMART CITY <i>/</i>{tr("DUSHANBE")}</span><span><AccentSwitch /><LanguageSwitch /><ShieldCheck size={14} />{tr("ACCOUNT ACCESS")}</span></header>
     <div className={`city-auth-card ${mode === 'register' ? 'is-register' : ''}`}>
       <AuthPanel mode={mode} />
       <section className="city-auth-form-panel" aria-label={mode === 'login' ? tr("Sign in") : tr("Register")}>

@@ -13,6 +13,10 @@ class AIUnavailable(APIException):
     default_detail = 'AI is not configured.'
 
 
+def provider_configured():
+    return bool(os.environ.get('SMART_CITY_AI_URL') and os.environ.get('SMART_CITY_AI_KEY'))
+
+
 def ask_provider(payload):
     url = os.environ.get('SMART_CITY_AI_URL')
     key = os.environ.get('SMART_CITY_AI_KEY')

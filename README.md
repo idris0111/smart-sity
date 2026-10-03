@@ -164,7 +164,9 @@ http://localhost:8080 обслуживает React build. Nginx пересыла
 ## Камера и AI
 
 Start/stop/flip, live preview, capture JPEG и отправка кадра реализованы.
-Без SMART_CITY_AI_URL и SMART_CITY_AI_KEY backend возвращает 503 AI is not configured.
+Без SMART_CITY_AI_URL и SMART_CITY_AI_KEY анализ кадров возвращает 503 AI is not configured.
+Чат в этом случае работает как явно обозначенный локальный справочник по данным проекта.
+Подключённый AI получает последние 12 сообщений разговора и выбранный язык интерфейса.
 Адаптер ожидает POST gateway с system/task/message либо system/task/image и ответ
 `{"answer":"..."}`. Конкретная модель не подключена. Инструкция: myapp/ai_prompt.txt.
 Внешняя модель не получает ключи или JWT. Встроенный справочник явно подписан.

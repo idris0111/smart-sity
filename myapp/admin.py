@@ -34,7 +34,12 @@ class CameraAlertAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
-admin.site.register(RouteGeometry)
+@admin.register(RouteGeometry)
+class RouteGeometryAdmin(admin.ModelAdmin):
+    list_display = ('route', 'distance_m', 'source', 'updated_at')
+    readonly_fields = [field.name for field in RouteGeometry._meta.fields]
+    def has_add_permission(self, request):
+        return False
 
 
 class RouteStopInline(admin.TabularInline):

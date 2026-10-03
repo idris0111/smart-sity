@@ -143,6 +143,9 @@ export interface MapAction {
   enabled?: boolean;
 }
 export interface CenterProps {
+  onMapAction?: (action: MapAction) => Promise<void>;
+  paletteOpen?: boolean;
+  closePalette?: () => void;
   onRouteSelect?: (number: string, id?: number) => Promise<void>;
   data: CityData;
   routePath: RoadPath | null;

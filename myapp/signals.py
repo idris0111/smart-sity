@@ -8,6 +8,20 @@ from .models import Route, RouteStop, BusStop, Vehicle, TrafficIncident, Service
 from .serializer import VehicleSerializer, TrafficIncidentSerializer, ServiceRequestSerializer, ParkingBookingSerializer
 from .realtime import publish, publish_private
 
+def publish_parking_inventory(parking_id):
+    """Public counts only; booking identities stay in private groups."""
+    from django.utils import timezone
+    from .serializer import ParkingLotSerializer
+    lot = ParkingLot.objects.filter(pk=parking_id).first()
+    if lot is None:
+        return
+    now = timezone.now()
+    spots = ParkingSpot.objects.filter(parking_id=parking_id, is_active=True)
+    busy = ParkingBooking.objects.filter(status='BOOKED',start_time__lte=now,end_time__gt=now).values('parking_spot_id')
+    lot.total_spots = spots.count()
+    lot.free_spots = spots.exclude(pk__in=busy).count()
+    publish('city.infrastructure', {'kind':'parking.updated','data':ParkingLotSerializer(lot).data})
+
 
 @receiver(post_save, sender=Camera)
 @receiver(post_delete, sender=Camera)
@@ -75,6 +89,8 @@ def request_saved(sender, instance, created, **kwargs):
 def booking_saved(sender, instance, **kwargs):
     event = {'kind': 'booking.updated', 'data': ParkingBookingSerializer(instance).data}
     transaction.on_commit(lambda: publish_private(instance.user_id, event))
+    parking_id = instance.parking_spot.parking_id
+    transaction.on_commit(lambda: publish_parking_inventory(parking_id))
 
 
 @receiver(post_delete, sender=Vehicle)

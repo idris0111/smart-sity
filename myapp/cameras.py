@@ -243,7 +243,7 @@ class CameraAnalyzeView(APIView):
         from .tasks import analyze_camera
         from .ai import AIUnavailable
         import os
-        if not os.environ.get('SMART_CITY_AI_URL'):
+        if not os.environ.get('SMART_CITY_AI_URL') or not os.environ.get('SMART_CITY_AI_KEY'):
             raise AIUnavailable()
         from django.conf import settings
         if not settings.USE_REDIS or not settings.CELERY_BROKER_URL:
