@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import TokenError
 from redis.exceptions import RedisError
+from django.conf import settings
 
 
 @database_sync_to_async
@@ -21,6 +22,8 @@ class CityConsumer(AsyncJsonWebsocketConsumer):
         self.groups_joined = []
         await self.accept()
         self.timeout = asyncio.create_task(self.close_later(5))
+        if not settings.REALTIME_ENABLED:
+            await self.close(code=1013)
 
     async def close_later(self, seconds):
         await asyncio.sleep(max(0, seconds))
@@ -37,7 +40,7 @@ class CityConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4401)
             return
         self.timeout.cancel()
-        self.groups_joined = ['city.vehicles', 'city.admin' if self.user.is_staff else f'city.user.{self.user.pk}']
+        self.groups_joined = ['city.vehicles', 'city.cameras', 'city.infrastructure', 'city.admin' if self.user.is_staff else f'city.user.{self.user.pk}']
         try:
             for group in self.groups_joined:
                 await self.channel_layer.group_add(group, self.channel_name)

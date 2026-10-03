@@ -3,6 +3,9 @@
 Учебный Django DRF + React проект. Основные данные хранятся в PostgreSQL.
 Redis используется для cache (DB 1), Celery broker (DB 0), Channels (DB 2).
 Маршрут 88, три бронируемые парковки и DEMO-88-01 — демонстрационные данные.
+Новая главная страница — MapLibre Command Center; маршруты строятся по дорогам
+OSRM и сохраняются в PostgreSQL. Камеры, потоковые форматы, слои, AI и ограничения
+настройки описаны в [COMMAND_CENTER.md](COMMAND_CENTER.md).
 
 ## Запуск через Docker Compose
 
@@ -36,19 +39,40 @@ Compose читает его автоматически. Все адреса и c
 Исходный `db.sqlite3` сохранён. CustomUser в исходной базе не было.
 
 ```powershell
-$cityPython = 'C:\Program Files\PostgreSQL\18\pgAdmin 4\python\python.exe'
+$cityPython = '.\.venv\Scripts\python.exe'
 # Если выделенный PostgreSQL остановлен:
 & 'C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe' -D .runtime/postgres -l .runtime/postgres.log -o '-h 127.0.0.1 -p 55432' start
-& $cityPython run_backend.py migrate
-& $cityPython run_backend.py runserver 127.0.0.1:8000 --noreload
+& $cityPython manage.py migrate
+& $cityPython manage.py runserver 127.0.0.1:8000
 ```
 
-`run_backend.py` читает локальный .env и использует библиотеки проекта,
-поскольку старый `.venv/Scripts/python.exe` ссылается на отсутствующий Python.
+`.venv` использует Python 3.14. Устанавливайте зависимости только через её Python:
+`& .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`.
+Не устанавливайте бинарные библиотеки из Python pgAdmin в `.venv` другого Python.
+Настройки Django читают локальный `.env`, поэтому обычный `python manage.py runserver`
+в активированной `.venv` получает правильные параметры PostgreSQL.
 На другом компьютере создайте обычное Python-окружение, установите requirements.txt
 и задайте переменные окружения перед `python manage.py ...`.
 Без Redis REST сохраняет данные, кэш читает из PostgreSQL и пишет предупреждение;
 real-time и broker в таком режиме недоступны. Это диагностический режим, не полный стек.
+
+## Открытие frontend с телефона в локальной сети
+
+Запустите `npm.cmd run dev` в `frontend`: Vite слушает `0.0.0.0:5173`.
+На телефоне в той же Wi-Fi сети откройте Network URL, который напечатает Vite.
+Адрес localhost на телефоне не указывает на компьютер. API использует относительные
+URL и пересылается Vite в Django; backend не требуется открывать в локальную сеть.
+Windows Firewall должен разрешать входящие подключения Node в вашей частной сети.
+
+Для WebSocket добавьте точный адрес frontend (например, `http://<IP-компьютера>:5173`)
+в список `WEBSOCKET_ORIGINS` в локальном `.env` и перезапустите Django.
+При смене Wi-Fi адрес компьютера может измениться. Для текущей сети origin добавлен.
+Без работающего Redis real-time остаётся недоступным.
+
+В production используйте существующий Nginx proxy и относительные API/WS URL;
+для отдельного API домена задаются `VITE_API_BASE_URL` и `VITE_WS_URL` при сборке,
+а разрешённые hosts/origins и CORS настраиваются под реальные домены deployment.
+Vite dev server предназначен для локальной разработки.
 
 ## Перенос SQLite без JSON
 
@@ -150,9 +174,9 @@ Start/stop/flip, live preview, capture JPEG и отправка кадра ре�
 
 ```powershell
 $env:POSTGRES_TESTS='1'
-& $cityPython run_backend.py test --settings=core.test_settings
-& $cityPython run_backend.py check
-& $cityPython run_backend.py makemigrations --check
+& $cityPython manage.py test --settings=core.test_settings
+& $cityPython manage.py check
+& $cityPython manage.py makemigrations --check
 cd frontend
 npm.cmd run build
 ```

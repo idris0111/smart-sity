@@ -43,6 +43,8 @@ class CameraInputSerializer(serializers.Serializer):
 
 
 class ParkingLotSerializer(serializers.ModelSerializer):
+    total_spots = serializers.IntegerField(read_only=True)
+    free_spots = serializers.IntegerField(read_only=True)
     class Meta:
         model = ParkingLot
         fields = '__all__'

@@ -4,9 +4,39 @@ from django.db import transaction
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from redis.exceptions import RedisError
-from .models import Route, RouteStop, BusStop, Vehicle, TrafficIncident, ServiceRequest, ParkingBooking
+from .models import Route, RouteStop, BusStop, Vehicle, TrafficIncident, ServiceRequest, ParkingBooking, Camera, CameraAlert, ParkingLot, ParkingSpot
 from .serializer import VehicleSerializer, TrafficIncidentSerializer, ServiceRequestSerializer, ParkingBookingSerializer
 from .realtime import publish, publish_private
+
+
+@receiver(post_save, sender=Camera)
+@receiver(post_delete, sender=Camera)
+def camera_changed(sender, instance, signal, **kwargs):
+    from .cameras import CameraSerializer
+    if signal is post_delete or not instance.is_active or not instance.rights_confirmed:
+        event = {'kind': 'camera.deleted', 'data': {'id': instance.pk}}
+    else:
+        event = {'kind': 'camera.updated', 'data': CameraSerializer(instance).data}
+    transaction.on_commit(lambda: publish('city.cameras', event))
+
+
+@receiver(post_save, sender=CameraAlert)
+def alert_changed(sender, instance, **kwargs):
+    from .cameras import CameraAlertSerializer
+    event = {'kind': 'alert.updated', 'data': CameraAlertSerializer(instance).data}
+    transaction.on_commit(lambda: publish('city.admin', event))
+
+
+@receiver(post_save, sender=ParkingLot)
+@receiver(post_delete, sender=ParkingLot)
+@receiver(post_save, sender=ParkingSpot)
+@receiver(post_delete, sender=ParkingSpot)
+def infrastructure_changed(sender, instance, signal, **kwargs):
+    from .serializer import ParkingLotSerializer, ParkingSpotSerializer
+    kind, serializer = ('parking', ParkingLotSerializer) if sender is ParkingLot else ('spot', ParkingSpotSerializer)
+    event = {'kind': f'{kind}.deleted' if signal is post_delete else f'{kind}.updated',
+             'data': {'id': instance.pk} if signal is post_delete else serializer(instance).data}
+    transaction.on_commit(lambda: publish('city.infrastructure', event))
 
 
 @receiver([post_save, post_delete], sender=Route)

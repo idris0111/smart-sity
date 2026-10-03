@@ -1,3 +1,8 @@
+import json
+import logging
+
+from django.conf import settings
+from django.core.cache import cache
 from django.http import Http404
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.generics import GenericAPIView, ListAPIView, ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -10,9 +15,7 @@ from .serializer import (BusStopSerializer, ParkingBookingSerializer,ParkingLotS
 from .serializer import AvailabilityQuerySerializer, AvailabilitySpotSerializer
 from .serializer import AssistantInputSerializer, CameraInputSerializer
 from .ai import ask_provider
-from django.core.cache import cache
 from redis.exceptions import RedisError
-import logging
 
 
 class AssistantView(GenericAPIView):
@@ -22,7 +25,14 @@ class AssistantView(GenericAPIView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        return Response(ask_provider({'task': 'assistant', **serializer.validated_data}))
+        from .assistant_context import city_context, safe_actions
+        from django.core.serializers.json import DjangoJSONEncoder
+        context = json.loads(json.dumps(city_context(request.user), cls=DjangoJSONEncoder))
+        result = ask_provider({'task': 'assistant', **serializer.validated_data, 'context': context,
+                              'action_schema': ['fly_to(latitude,longitude)', 'show_cameras_near(latitude,longitude)',
+                                                'select_camera(id)', 'select_parking(id)', 'select_vehicle(id)',
+                                                'show_route(id)', 'toggle_layer(layer,enabled)']})
+        return Response({'answer': result['answer'], 'actions': safe_actions(result.get('actions'), context)})
 
 
 class CameraAnalysisView(GenericAPIView):
@@ -40,6 +50,15 @@ class ParkingLotListCreateView(ListCreateAPIView):
     queryset = ParkingLot.objects.all()
     serializer_class = ParkingLotSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        from django.db.models import Count, Q, Subquery
+        from django.utils import timezone
+        now = timezone.now()
+        busy = ParkingBooking.objects.filter(status='BOOKED',start_time__lte=now,end_time__gt=now).values('parking_spot_id')
+        return ParkingLot.objects.annotate(
+            total_spots=Count('spots',filter=Q(spots__is_active=True),distinct=True),
+            free_spots=Count('spots',filter=Q(spots__is_active=True)&~Q(spots__id__in=Subquery(busy)),distinct=True))
 
 
 class ParkingLotDetailView(RetrieveUpdateDestroyAPIView):
@@ -162,6 +181,24 @@ class RouteDetailView(RetrieveUpdateDestroyAPIView):
     queryset = Route.objects.prefetch_related('route_stops__stop').all()
     serializer_class = RouteSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+
+class RoutePathView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, number):
+        routes = Route.objects.filter(number=str(number))
+        if request.query_params.get('route_id'):
+            value = request.query_params['route_id']
+            if not value.isdecimal():
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError('route_id must be an integer.')
+            routes = routes.filter(pk=value)
+        route = routes.first()
+        if route is None:
+            raise Http404
+        from .road_routing import road_geometry, geometry_payload
+        return Response(geometry_payload(route, road_geometry(route)))
 
 
 class RouteSearchView(ListAPIView):

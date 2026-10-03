@@ -2,6 +2,39 @@ from django.contrib import admin
 
 from .models import (BusStop, ParkingBooking, ParkingLot, ParkingSpot, Route,
                      RouteStop, ServiceRequest, TrafficIncident, Vehicle)
+from .models import Camera, CameraAlert, RouteGeometry
+from .cameras import CameraSerializer
+from django import forms
+
+class CameraForm(forms.ModelForm):
+    class Meta:
+        model = Camera
+        fields = '__all__'
+
+    def clean(self):
+        data = super().clean()
+        validated = {k: v for k, v in data.items() if k in ('stream_url', 'preview_url', 'latitude', 'longitude', 'is_active', 'rights_confirmed')}
+        serializer = CameraSerializer(instance=self.instance if self.instance.pk else None, data=validated, partial=True)
+        if not serializer.is_valid():
+            raise forms.ValidationError(str(serializer.errors))
+        return data
+
+@admin.register(Camera)
+class CameraAdmin(admin.ModelAdmin):
+    form = CameraForm
+    list_display = ('name', 'city', 'stream_type', 'status', 'is_active', 'last_seen')
+    list_filter = ('status', 'stream_type', 'city', 'is_active')
+    search_fields = ('name', 'address')
+    readonly_fields = ('status', 'last_seen', 'latency_ms', 'created_at', 'updated_at')
+
+@admin.register(CameraAlert)
+class CameraAlertAdmin(admin.ModelAdmin):
+    list_display = ('camera', 'status', 'confidence', 'created_at')
+    readonly_fields = [field.name for field in CameraAlert._meta.fields]
+    def has_add_permission(self, request):
+        return False
+
+admin.site.register(RouteGeometry)
 
 
 class RouteStopInline(admin.TabularInline):

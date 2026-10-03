@@ -7,7 +7,7 @@ from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 from core.asgi import application
-from .models import ParkingLot, ParkingSpot, ParkingBooking, Route, BusStop, RouteStop, Vehicle, TrafficIncident
+from .models import ParkingLot, ParkingSpot, ParkingBooking, Route, BusStop, RouteStop, Vehicle, TrafficIncident, RouteGeometry
 from .tasks import check_expired_bookings, move_demo_vehicle
 
 
@@ -29,7 +29,7 @@ class BackgroundTaskTests(TransactionTestCase):
             record.refresh_from_db()
         self.assertEqual((old.status, future.status, cancelled.status), ('COMPLETED', 'BOOKED', 'CANCELLED'))
 
-    def test_demo_moves_only_named_vehicle_in_stop_order(self):
+    def test_demo_moves_only_named_vehicle_along_road_geometry(self):
         route = Route.objects.create(number='88', name='DEMO Route 88')
         stops = [BusStop.objects.create(name=str(i), latitude=38+i/100, longitude=68) for i in range(2)]
         for stop in stops:
@@ -38,13 +38,17 @@ class BackgroundTaskTests(TransactionTestCase):
             RouteStop.objects.create(route=route, stop=stop, order=i)
         demo = Vehicle.objects.create(route=route, plate_number='DEMO-88-01', latitude=stops[0].latitude, longitude=68)
         real = Vehicle.objects.create(route=route, plate_number='REAL', latitude=38, longitude=68)
+        RouteGeometry.objects.create(route=route,stop_signature='test',geometry={'type':'LineString','coordinates':[[68,38],[68.001,38],[68.001,38.01]]},distance_m=1200,duration_s=150)
         self.assertTrue(move_demo_vehicle.run())
         demo.refresh_from_db(); real.refresh_from_db()
-        self.assertEqual(demo.latitude, stops[1].latitude)
+        self.assertEqual(float(demo.latitude),38)
+        self.assertGreater(float(demo.longitude),68)
+        self.assertLess(float(demo.longitude),68.001)
         self.assertEqual(real.latitude, 38)
         self.assertTrue(move_demo_vehicle.run())
         demo.refresh_from_db()
-        self.assertEqual(demo.latitude, stops[0].latitude)
+        self.assertGreater(float(demo.latitude),38)
+        self.assertEqual(float(demo.longitude),68.001)
 
 
 @override_settings(REALTIME_ENABLED=True,

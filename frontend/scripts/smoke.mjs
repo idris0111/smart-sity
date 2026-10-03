@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const python = process.env.SMART_CITY_PYTHON || resolve(root, '.venv/Scripts/python.exe')
 const launcher = process.env.SMART_CITY_PYTHON ? 'run_backend.py' : 'manage.py'
-const base = 'http://127.0.0.1:5173'
+const base = process.env.SMART_CITY_FRONTEND_URL || 'http://127.0.0.1:5173'
 const username = `smoke_${randomUUID().slice(0, 8)}`
 const password = `Smoke-${randomUUID()}!`
 
@@ -38,6 +38,12 @@ try {
   if (!parking) throw new Error('DEMO parking is missing. Run seed_demo_data.')
   const routes = await request('/api/routes/', 'GET', null, token)
   expect(routes, 200, 'routes')
+  const road=await request('/api/route-paths/88/','GET',null,token)
+  expect(road,200,'road route through Vite proxy')
+  if(road.data.geometry?.type!=='LineString'||road.data.geometry.coordinates.length<=8) throw new Error('Road geometry missing or replaced by direct stop lines')
+  expect(await request('/api/cameras/','GET',null,token),200,'cameras')
+  expect(await request('/api/cameras/map/','GET',null,token),200,'camera GeoJSON')
+  expect(await request('/api/system/status/','GET',null,token),200,'actual service health')
   const route = routes.data.find(item => item.number === '88' && item.name.startsWith('DEMO'))
   if (route?.route_stops.length !== 8) throw new Error('DEMO route needs 8 ordered stops')
   const stops = route.route_stops

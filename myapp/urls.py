@@ -1,7 +1,25 @@
 from django.urls import path
 from .views import *
+from .system import SystemStatusView, ExternalLayerView
+from .cameras import (CameraListView, CameraDetailView, CameraMapView, CameraNearbyView,
+                     CameraStatusView, CameraAccessView, CameraStreamView, CameraSnapshotView,
+                     CameraAnalyzeView, CameraAlertListView, CameraAlertReviewView, CameraWHEPView)
 
 urlpatterns = [
+    path('system/status/', SystemStatusView.as_view()),
+    path('layers/<str:key>/', ExternalLayerView.as_view()),
+    path('cameras/', CameraListView.as_view()),
+    path('cameras/map/', CameraMapView.as_view()),
+    path('cameras/nearby/', CameraNearbyView.as_view()),
+    path('cameras/<int:pk>/', CameraDetailView.as_view()),
+    path('cameras/<int:pk>/status/', CameraStatusView.as_view()),
+    path('cameras/<int:pk>/access/', CameraAccessView.as_view()),
+    path('cameras/<int:pk>/snapshot/', CameraSnapshotView.as_view()),
+    path('cameras/<int:pk>/stream/', CameraStreamView.as_view()),
+    path('cameras/<int:pk>/whep/', CameraWHEPView.as_view()),
+    path('cameras/<int:pk>/analyze/', CameraAnalyzeView.as_view()),
+    path('ai-alerts/', CameraAlertListView.as_view()),
+    path('ai-alerts/<int:pk>/review/', CameraAlertReviewView.as_view()),
     path('assistant/', AssistantView.as_view()),
     path('camera/analyze/', CameraAnalysisView.as_view()),
     # Parking Lots
@@ -25,6 +43,7 @@ urlpatterns = [
     path('routes/', RouteListCreateView.as_view()),
     path('routes/search/<int:start_id>/<int:end_id>/', RouteSearchView.as_view()),
     path('routes/<int:pk>/', RouteDetailView.as_view()),
+    path('route-paths/<str:number>/', RoutePathView.as_view()),
 
     # Route Stops
     path('route-stops/', RouteStopListCreateView.as_view()),

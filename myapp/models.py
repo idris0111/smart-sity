@@ -74,6 +74,54 @@ class RouteStop(models.Model):
     def __str__(self):
         return f'{self.route} - {self.stop}'
 
+
+class RouteGeometry(models.Model):
+    route = models.OneToOneField(Route, on_delete=models.CASCADE, related_name='road_geometry')
+    stop_signature = models.CharField(max_length=64)
+    geometry = models.JSONField()
+    waypoints = models.JSONField(default=list)
+    distance_m = models.FloatField()
+    duration_s = models.FloatField()
+    source = models.CharField(max_length=40, default='OSRM / OpenStreetMap')
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class Camera(models.Model):
+    STREAM_TYPES = [(value, value) for value in ('HLS', 'MJPEG', 'SNAPSHOT', 'WEBRTC', 'EXTERNAL')]
+    STATUSES = [(value, value) for value in ('ONLINE', 'SLOW', 'OFFLINE', 'UNKNOWN')]
+    name = models.CharField(max_length=150)
+    camera_type = models.CharField(max_length=60, default='TRAFFIC')
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    stream_url = models.URLField(max_length=2000, blank=True)
+    preview_url = models.URLField(max_length=2000, blank=True)
+    stream_type = models.CharField(max_length=20, choices=STREAM_TYPES, default='SNAPSHOT')
+    status = models.CharField(max_length=20, choices=STATUSES, default='UNKNOWN')
+    is_active = models.BooleanField(default=True)
+    rights_confirmed = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    latency_ms = models.PositiveIntegerField(null=True, blank=True)
+    city = models.CharField(max_length=100, default='Dushanbe')
+    address = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class CameraAlert(models.Model):
+    camera = models.ForeignKey(Camera, on_delete=models.CASCADE, related_name='alerts')
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=[(v, v) for v in ('PENDING', 'REVIEW', 'CONFIRMED', 'DISMISSED', 'FAILED')], default='PENDING')
+    answer = models.TextField(blank=True)
+    confidence = models.FloatField(null=True, blank=True)
+    error = models.CharField(max_length=255, blank=True)
+    incident = models.ForeignKey('TrafficIncident', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
 class Vehicle(models.Model):
     VEHICLE_TYPES = [
         ('BUS','Bus'),
@@ -83,6 +131,8 @@ class Vehicle(models.Model):
     route = models.ForeignKey(Route,on_delete=models.SET_NULL,null=True,blank=True,related_name='vehicles')
     vehicle_type = models.CharField(max_length=20,choices=VEHICLE_TYPES,default='BUS')
     plate_number = models.CharField(max_length=30,unique=True)
+    demo_progress_m = models.FloatField(default=0, editable=False)
+    updated_at = models.DateTimeField(auto_now=True)
     latitude = models.DecimalField(max_digits=9,decimal_places=6,null=True,blank=True)
     longitude = models.DecimalField(max_digits=9,decimal_places=6,null=True,blank=True)
     is_active = models.BooleanField(default=True)

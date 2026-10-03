@@ -19,7 +19,7 @@ export function connectCity(onEvent, onStatus) {
       if (code === 4401) {
         try { await refreshAccess() } catch { onStatus('authentication required'); return }
       }
-      retry = setTimeout(connect, 3000)
+      retry = setTimeout(connect, code === 1013 ? 15000 : 3000)
     }
     socket.onerror = () => socket.close()
   }

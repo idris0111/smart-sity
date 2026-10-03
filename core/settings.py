@@ -16,6 +16,14 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Local development configuration; explicit process variables take precedence.
+env_file = BASE_DIR / '.env'
+if env_file.exists():
+    for line in env_file.read_text(encoding='utf-8-sig').splitlines():
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            os.environ.setdefault(key, value)
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
@@ -162,30 +170,42 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Separate Redis databases for cache, broker, and channel layer.
-CACHES = {'default': {
-    'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-    'LOCATION': os.environ.get('REDIS_CACHE_URL', 'redis://127.0.0.1:6379/1'),
-    'TIMEOUT': 60,
-    'OPTIONS': {'socket_connect_timeout': 1, 'socket_timeout': 1},
-}}
-CHANNEL_LAYERS = {'default': {
-    'BACKEND': 'channels_redis.core.RedisChannelLayer',
-    'CONFIG': {'hosts': [{
-        'address': os.environ.get('REDIS_CHANNEL_URL', 'redis://127.0.0.1:6379/2'),
-        'socket_connect_timeout': 1, 'socket_timeout': 1,
-    }]},
-}}
+USE_REDIS = os.environ.get('USE_REDIS', '0') == '1'
+
+if USE_REDIS:
+    CACHES = {'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.environ.get('REDIS_CACHE_URL', 'redis://127.0.0.1:6379/1'),
+        'TIMEOUT': 60,
+        'OPTIONS': {'socket_connect_timeout': 1, 'socket_timeout': 1},
+    }}
+    CHANNEL_LAYERS = {'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {'hosts': [{
+            'address': os.environ.get('REDIS_CHANNEL_URL', 'redis://127.0.0.1:6379/2'),
+            'socket_connect_timeout': 1, 'socket_timeout': 1,
+        }]},
+    }}
+    REALTIME_ENABLED = True
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
+else:
+    CACHES = {'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'smart-city-local',
+        'TIMEOUT': 60,
+    }}
+    CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
+    REALTIME_ENABLED = False
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', '')
+
 WEBSOCKET_ORIGINS = os.environ.get('WEBSOCKET_ORIGINS',
     'http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080').split(',')
-REALTIME_ENABLED = True
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TIMEZONE = 'UTC'
 CELERY_BEAT_SCHEDULE = {
     'complete-expired-bookings': {'task': 'myapp.tasks.check_expired_bookings', 'schedule': 60.0},
 }
-if os.environ.get('DEMO_SIMULATION', '0') == '1':
+if os.environ.get('DEMO_SIMULATION', '0') == '1' and USE_REDIS:
     CELERY_BEAT_SCHEDULE['move-demo-vehicle'] = {
         'task': 'myapp.tasks.move_demo_vehicle', 'schedule': 10.0,
     }
@@ -195,3 +215,9 @@ if os.environ.get('DEMO_SIMULATION', '0') == '1':
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# Public development router; set your own OSRM service for production.
+ROUTING_URL = os.environ.get('ROUTING_URL', 'https://router.project-osrm.org')
+CAMERA_ALLOWED_HOSTS = [v.strip() for v in os.environ.get('CAMERA_ALLOWED_HOSTS', '').split(',') if v.strip()]
+CAMERA_ALLOW_PRIVATE = os.environ.get('CAMERA_ALLOW_PRIVATE', '0') == '1'
+CELERY_BEAT_SCHEDULE['camera-health'] = {'task': 'myapp.tasks.check_camera_health', 'schedule': 60.0}

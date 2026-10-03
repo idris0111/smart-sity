@@ -61,7 +61,7 @@ node scripts/setup-local-env.cjs
 docker compose up -d --build
 docker compose exec backend python manage.py seed_demo_data
 # Для host-проверки установите requirements-dev.txt в рабочее Python-окружение:
-$cityPython = 'C:\Program Files\PostgreSQL\18\pgAdmin 4\python\python.exe'
+$cityPython = '.\.venv\Scripts\python.exe'
 # Укажите POSTGRES_HOST/PORT того PostgreSQL, который использует запущенный worker.
 & $cityPython run_backend.py --module scripts.integration_realtime --beat
 ```
@@ -79,10 +79,18 @@ DEMO Route 88, DEMO парковки и simulation не официальные �
 Существующие недемонстрационные геоданные перенесены без новой внешней проверки.
 Serializer overlap-check ещё не гарантирует защиту от одновременного бронирования.
 
-Локальная .venv launcher ссылается на отсутствующий Python; run_backend.py использует
-установленный Python pgAdmin и изолирует его от посторонних pgAdmin packages.
-Новые библиотеки установлены только в папку проекта. Системная установка pgAdmin
+В `.venv` обнаружена смесь Python 3.14 и бинарных пакетов cp313 из предыдущей
+установки через pgAdmin. Это вызвало `_cffi_backend` ModuleNotFoundError.
+Зависимости переустановлены через Python самой `.venv`. Рекомендуемый запуск —
+`.venv/Scripts/python.exe manage.py runserver`, без чужого Python и подмены sys.path.
+Настройки Django читают .env для стандартного запуска. Системная установка pgAdmin
 и существующий PostgreSQL-сервис не изменены.
+
+После исправления `_cffi_backend.cp314-win_amd64.pyd` загружается в Python 3.14,
+Daphne и psycopg импортируются. `pip check` не обнаружил сломанных зависимостей.
+`manage.py check` и 22 теста на PostgreSQL прошли. Обычный `manage.py runserver`
+с StatReloader запущен на тестовом порту 8010; `/swagger/` ответил HTTP 200.
+Тестовый сервер остановлен после проверки.
 
 Инструкции и REST/WS протокол: README.md. Объяснения технологий и защита: DEFENSE.md.
 
